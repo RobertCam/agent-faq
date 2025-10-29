@@ -178,13 +178,13 @@ export async function rankQuestions(input: RankQuestionsInput): Promise<{ top: R
  * Tool 4: Generate FAQ JSON using OpenAI
  */
 export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqComponent: FAQComponentProps }> {
-  const { brand, region, questions } = input;
+  const { brand, region, questions, customInstructions } = input;
   
   console.log(`[generateFAQJSON] Generating FAQ for ${questions.length} questions`);
   
   const questionList = questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
   
-  const prompt = `You are a content writer for ${brand} in ${region}. 
+  let prompt = `You are a content writer for ${brand} in ${region}. 
 
 Generate a concise, factual FAQ based on these questions:
 ${questionList}
@@ -193,9 +193,13 @@ Requirements:
 - Answer 5-8 of the best questions (prioritize commercial notices and local relevance)
 - Each answer should be 2-3 sentences maximum
 - Be factual, helpful, and specific to ${brand} in ${region}
-- Tone should be friendly and professional
+- Tone should be friendly and professional`;
 
-Return ONLY a JSON object with this exact structure:
+  if (customInstructions) {
+    prompt += `\n\nAdditional instructions:\n${customInstructions}`;
+  }
+
+  prompt += `\n\nReturn ONLY a JSON object with this exact structure:
 {
   "items": [
     {

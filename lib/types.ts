@@ -66,6 +66,7 @@ export interface GenerateFAQInput {
   brand: string;
   region: string;
   questions: RankedQuestion[];
+  customInstructions?: string;
 }
 
 export interface DraftStorePutInput {

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const body = await req.json();
-        const { brand, vertical, region } = body;
+        const { brand, vertical, region, customInstructions } = body;
 
         if (!brand || !vertical || !region) {
           sendUpdate('error', { message: 'Missing required fields' });
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
         // Step 4: Generate FAQ
         sendUpdate('step', { step: 4, name: 'Generating FAQ with AI', status: 'running' });
-        const faqResult = await generateFAQJSON({ brand, region, questions: rankedResult.top });
+        const faqResult = await generateFAQJSON({ brand, region, questions: rankedResult.top, customInstructions });
         sendUpdate('step', { step: 4, name: 'Generating FAQ with AI', status: 'completed', data: faqResult });
         sendUpdate('data', { faqComponent: faqResult.faqComponent });
 

@@ -20,6 +20,7 @@ export default function Home() {
   const [brand, setBrand] = useState('Starbucks');
   const [vertical, setVertical] = useState('Coffee / QSR');
   const [region, setRegion] = useState('Vancouver');
+  const [customInstructions, setCustomInstructions] = useState('');
   const [loading, setLoading] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
   const [workflowData, setWorkflowData] = useState<WorkflowData>({
@@ -49,7 +50,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ brand, vertical, region }),
+        body: JSON.stringify({ brand, vertical, region, customInstructions }),
       });
 
       if (!response.ok) throw new Error('Failed to start agent');
@@ -96,12 +97,22 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="bg-white shadow rounded-lg p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            AI-Driven FAQ Generator
-          </h1>
-          <p className="text-gray-600 mb-8">
-            Generate FAQs automatically using AI agent orchestration with MCP tools.
-          </p>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                AI-Driven FAQ Generator
+              </h1>
+              <p className="text-gray-600 mt-2">
+                Generate FAQs automatically using AI agent orchestration with MCP tools.
+              </p>
+            </div>
+            <a
+              href="/docs"
+              className="text-blue-600 hover:text-blue-800 font-medium text-sm px-4 py-2 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              Documentation →
+            </a>
+          </div>
 
           <div className="space-y-6 mb-8">
             <div>
@@ -147,6 +158,24 @@ export default function Home() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={loading}
               />
+            </div>
+
+            <div>
+              <label htmlFor="customInstructions" className="block text-sm font-medium text-gray-700 mb-2">
+                Custom Instructions (Optional)
+              </label>
+              <textarea
+                id="customInstructions"
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                placeholder="e.g., Focus on vegan options, Emphasize sustainability, Include menu prices"
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={loading}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Add extra instructions to guide the AI generation (tone, specific topics, formatting, etc.)
+              </p>
             </div>
           </div>
 
