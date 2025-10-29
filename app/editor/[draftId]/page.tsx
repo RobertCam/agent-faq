@@ -45,7 +45,7 @@ export default function EditorPage() {
               props: data.draft.faqComponent,
             },
           ],
-          root: { props: {} },
+          root: { props: {}, title: 'FAQ Page' },
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
@@ -162,12 +162,15 @@ export default function EditorPage() {
 
       {/* Content */}
       <div className="py-8">
-        {isEditing ? (
+        {isEditing && puckData ? (
           <div className="max-w-7xl mx-auto">
             <Puck
               config={config}
               data={puckData}
               onChange={setPuckData}
+              onPublish={() => {
+                console.log('Publishing FAQ...');
+              }}
             />
           </div>
         ) : (

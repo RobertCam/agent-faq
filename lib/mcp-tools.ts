@@ -52,7 +52,7 @@ export async function expandSeeds(input: ExpandSeedsInput): Promise<{ seeds: str
   const regionVariations = templates.map(t => t.replace(region, `in ${region}`));
   
   // Combine and deduplicate
-  const allSeeds = [...new Set([...templates, ...regionVariations])];
+  const allSeeds = Array.from(new Set([...templates, ...regionVariations]));
   
   console.log(`[expandSeeds] Generated ${allSeeds.length} seed queries`);
   
@@ -124,7 +124,7 @@ export async function rankQuestions(input: RankQuestionsInput): Promise<{ top: R
   // Score each question
   const ranked: RankedQuestion[] = [];
   
-  for (const [, row] of uniqueQuestions) {
+  for (const row of Array.from(uniqueQuestions.values())) {
     let score = 0;
     const reasoning: string[] = [];
     
