@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Puck, Render, Data } from '@measured/puck';
 import '@measured/puck/dist/index.css';
-import { config } from '@/app/puck-config.tsx';
+import { config } from '@/app/puck-config';
 import { Draft } from '@/lib/types';
 
 export default function EditorPage() {
