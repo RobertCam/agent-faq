@@ -6,10 +6,10 @@ export default function DocsPage() {
       <div className="max-w-4xl mx-auto">
         <div className="bg-white shadow rounded-lg p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
-            AI-Driven FAQ Generator Documentation
+            AI-Driven Content Generator Documentation
           </h1>
           <p className="text-gray-600 mb-8">
-            A proof-of-concept demonstrating scalable content automation using AI agent orchestration with Model Context Protocol (MCP) tools.
+            A proof-of-concept demonstrating scalable content automation using AI agent orchestration with Model Context Protocol (MCP) tools. Supports FAQ, Product Comparison, and Blog Article generation.
           </p>
 
           {/* Table of Contents */}
@@ -29,16 +29,26 @@ export default function DocsPage() {
           <section id="overview" className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Overview</h2>
             <p className="text-gray-700 mb-4">
-              This system automates the generation of FAQ content by:
+              This system automates the generation of multiple content types by:
             </p>
             <ol className="list-decimal list-inside space-y-2 text-gray-700 mb-4">
-              <li>Accepting brand, vertical, and region as input parameters</li>
+              <li>Accepting brand, vertical, region, and content type as input parameters</li>
               <li>Generating seed search queries using AI</li>
               <li>Fetching "People Also Ask" (PAA) questions from search results</li>
               <li>Ranking questions by commercial opportunity and relevance</li>
-              <li>Generating concise, factual FAQ answers using OpenAI</li>
+              <li>Generating content (FAQ, Comparison, or Blog) using OpenAI based on selected type</li>
               <li>Storing as drafts for review in a visual editor (PUCK)</li>
             </ol>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
+              <p className="text-green-800 text-sm">
+                <strong>Supported Content Types:</strong>
+              </p>
+              <ul className="list-disc list-inside text-sm text-green-800 mt-2 space-y-1">
+                <li><strong>FAQ:</strong> Frequently Asked Questions with schema.org JSON-LD</li>
+                <li><strong>Comparison:</strong> Product/service comparison tables</li>
+                <li><strong>Blog:</strong> Informative articles with multiple sections</li>
+              </ul>
+            </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-blue-800 text-sm">
                 <strong>Tech Stack:</strong> Next.js 14, TypeScript, OpenAI API, SerpAPI, PUCK Editor, TailwindCSS
@@ -214,11 +224,88 @@ export default function DocsPage() {
               <p className="text-sm text-gray-600 mt-4"><strong>Usage:</strong> Creates structured FAQ content with schema.org markup</p>
             </div>
 
-            {/* Tool 5 & 6: draft_store */}
+            {/* Tool 5: generate_comparison_json */}
+            <div className="border border-gray-200 rounded-lg p-6 mb-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">5. generate_comparison_json</h3>
+              <p className="text-gray-700 mb-4">Generates product/service comparison content using OpenAI with JSON mode.</p>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">Input:</p>
+                <pre className="text-xs text-gray-700 overflow-x-auto">
+{`{
+  brand: string;
+  vertical: string;
+  region: string;
+  questions: RankedQuestion[];
+  customInstructions?: string;
+}`}
+                </pre>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">Output:</p>
+                <pre className="text-xs text-gray-700 overflow-x-auto">
+{`{
+  comparisonComponent: {
+    brand: string;
+    competitor?: string;
+    category: string;
+    region?: string;
+    items: Array<{
+      feature: string;
+      brandValue: string;
+      competitorValue?: string;
+    }>;
+    schemaOrg: any;  // JSON-LD for SEO
+  }
+}`}
+                </pre>
+              </div>
+              <p className="text-sm text-gray-600 mt-4"><strong>Usage:</strong> Creates structured comparison tables with feature comparisons</p>
+            </div>
+
+            {/* Tool 6: generate_blog_json */}
+            <div className="border border-gray-200 rounded-lg p-6 mb-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">6. generate_blog_json</h3>
+              <p className="text-gray-700 mb-4">Generates blog article content using OpenAI with JSON mode.</p>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">Input:</p>
+                <pre className="text-xs text-gray-700 overflow-x-auto">
+{`{
+  brand: string;
+  vertical: string;
+  region: string;
+  questions: RankedQuestion[];
+  customInstructions?: string;
+}`}
+                </pre>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">Output:</p>
+                <pre className="text-xs text-gray-700 overflow-x-auto">
+{`{
+  blogComponent: {
+    title: string;
+    brand: string;
+    vertical: string;
+    region?: string;
+    metaDescription: string;
+    sections: Array<{
+      heading: string;
+      content: string;
+      order: number;
+    }>;
+    schemaOrg: any;  // JSON-LD for SEO
+  }
+}`}
+                </pre>
+              </div>
+              <p className="text-sm text-gray-600 mt-4"><strong>Usage:</strong> Creates structured blog articles with multiple sections</p>
+            </div>
+
+            {/* Tool 7: draft_store */}
             <div className="border border-gray-200 rounded-lg p-6">
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">5. draft_store (put/get)</h3>
-              <p className="text-gray-700 mb-4">Manages draft storage and retrieval.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">7. draft_store (put/get)</h3>
+              <p className="text-gray-700 mb-4">Manages draft storage and retrieval with support for multiple content types.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm font-semibold text-gray-900 mb-2">put - Input:</p>
                   <pre className="text-xs text-gray-700 overflow-x-auto">
@@ -226,7 +313,12 @@ export default function DocsPage() {
   brand: string;
   vertical: string;
   region: string;
-  faqComponent: FAQComponentProps;
+  contentType: 'FAQ' | 
+    'COMPARISON' | 
+    'BLOG';
+  content: FAQComponentProps |
+    ComparisonComponentProps |
+    BlogComponentProps;
 }`}
                   </pre>
                 </div>
@@ -239,7 +331,23 @@ export default function DocsPage() {
                   </pre>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mt-4"><strong>Usage:</strong> In-memory storage for draft management (POC)</p>
+              <div className="bg-blue-50 rounded-lg p-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">get - Output:</p>
+                <pre className="text-xs text-gray-700 overflow-x-auto">
+{`{
+  draft: {
+    id: string;
+    brand: string;
+    vertical: string;
+    region: string;
+    contentType: 'FAQ' | 'COMPARISON' | 'BLOG';
+    content: any;  // Content component
+    createdAt: string;
+  }
+}`}
+                </pre>
+              </div>
+              <p className="text-sm text-gray-600 mt-4"><strong>Usage:</strong> In-memory storage for draft management (POC) using globalThis for persistence</p>
             </div>
           </section>
 
@@ -266,13 +374,13 @@ export default function DocsPage() {
                 <span className="text-xs text-purple-600 mt-1 inline-block">Tool: rank_questions</span>
               </div>
               <div className="border-l-4 border-yellow-500 pl-4 py-2 bg-yellow-50">
-                <h3 className="font-semibold text-gray-900">Step 4: Generate FAQ</h3>
-                <p className="text-sm text-gray-700">Create concise, factual answers with AI</p>
-                <span className="text-xs text-yellow-600 mt-1 inline-block">Tool: generate_faq_json</span>
+                <h3 className="font-semibold text-gray-900">Step 4: Generate Content</h3>
+                <p className="text-sm text-gray-700">Create content (FAQ/Comparison/Blog) with AI based on user selection</p>
+                <span className="text-xs text-yellow-600 mt-1 inline-block">Tool: generate_faq_json | generate_comparison_json | generate_blog_json</span>
               </div>
               <div className="border-l-4 border-gray-500 pl-4 py-2 bg-gray-50">
                 <h3 className="font-semibold text-gray-900">Step 5: Store Draft</h3>
-                <p className="text-sm text-gray-700">Save for review and editing</p>
+                <p className="text-sm text-gray-700">Save for review and editing with content type metadata</p>
                 <span className="text-xs text-gray-600 mt-1 inline-block">Tool: draft_store.put</span>
               </div>
             </div>
@@ -283,7 +391,7 @@ export default function DocsPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Data Flow</h2>
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="font-mono text-sm space-y-2">
-                <div>Input: {"{brand, vertical, region}"}</div>
+                <div>Input: {"{brand, vertical, region, contentType}"}</div>
                 <div className="pl-4">↓</div>
                 <div>Seeds: string[]</div>
                 <div className="pl-4">↓</div>
@@ -291,9 +399,12 @@ export default function DocsPage() {
                 <div className="pl-4">↓</div>
                 <div>Ranked Questions: {"{question, score, reasoning}[]"}</div>
                 <div className="pl-4">↓</div>
-                <div>FAQ Component: {"{items: {question, answer}[]}"}</div>
+                <div>Content Component: FAQ | Comparison | Blog</div>
+                <div className="pl-8 text-xs text-gray-600">FAQ: {"{items: {question, answer}[]}"}</div>
+                <div className="pl-8 text-xs text-gray-600">Comparison: {"{items: {feature, brandValue, competitorValue}[]}"}</div>
+                <div className="pl-8 text-xs text-gray-600">Blog: {"{sections: {heading, content, order}[]}"}</div>
                 <div className="pl-4">↓</div>
-                <div>Draft ID: string</div>
+                <div>Draft ID: string (with contentType metadata)</div>
               </div>
             </div>
           </section>
@@ -312,11 +423,21 @@ Body:
   brand: string;
   vertical: string;
   region: string;
+  contentType: 'FAQ' | 'COMPARISON' | 'BLOG';
   customInstructions?: string;
 }
 
 Response: Server-Sent Events (SSE) stream
-Events: step, data, complete, error`}
+Events: step, data, complete, error
+
+Data events include:
+- seeds: string[]
+- paaRows: PAARow[]
+- rankedQuestions: RankedQuestion[]
+- faqComponent (if FAQ)
+- comparisonComponent (if COMPARISON)
+- blogComponent (if BLOG)
+- draftId: string`}
               </pre>
             </div>
 
@@ -367,7 +488,7 @@ Events: step, data, complete, error`}
                 ← Back to Generator
               </a>
               <p className="text-sm text-gray-600">
-                AI-Driven FAQ Generator POC
+                AI-Driven Content Generator POC
               </p>
             </div>
           </div>
