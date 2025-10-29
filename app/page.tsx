@@ -9,13 +9,25 @@ interface WorkflowData {
   faqComponent: any;
 }
 
+interface Step {
+  step: number;
+  name: string;
+  status: 'running' | 'completed';
+  data?: any;
+}
+
 export default function Home() {
   const [brand, setBrand] = useState('Starbucks');
   const [vertical, setVertical] = useState('Coffee / QSR');
   const [region, setRegion] = useState('Vancouver');
   const [loading, setLoading] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [workflowData, setWorkflowData] = useState<WorkflowData | null>(null);
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [workflowData, setWorkflowData] = useState<WorkflowData>({
+    seeds: [],
+    paaRows: [],
+    rankedQuestions: [],
+    faqComponent: null,
+  });
   const [draftId, setDraftId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,12 +39,12 @@ export default function Home() {
 
     setLoading(true);
     setError(null);
-    setLogs([]);
+    setSteps([]);
     setDraftId(null);
-    setWorkflowData(null);
+    setWorkflowData({ seeds: [], paaRows: [], rankedQuestions: [], faqComponent: null });
 
     try {
-      const response = await fetch('/api/run-demo', {
+      const response = await fetch('/api/run-demo-stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -40,15 +52,39 @@ export default function Home() {
         body: JSON.stringify({ brand, vertical, region }),
       });
 
-      const data = await response.json();
+      if (!response.ok) throw new Error('Failed to start agent');
 
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to run agent');
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) throw new Error('No response body');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'step') {
+              setSteps((prev) => {
+                const existing = prev.filter((s) => s.step !== data.data.step);
+                return [...existing, data.data];
+              });
+            } else if (data.type === 'data') {
+              setWorkflowData((prev) => ({ ...prev, ...data.data }));
+            } else if (data.type === 'complete') {
+              setDraftId(data.data.draftId);
+            } else if (data.type === 'error') {
+              throw new Error(data.data.message);
+            }
+          }
+        }
       }
-
-      setDraftId(data.draftId);
-      setLogs(data.logs || []);
-      setWorkflowData(data.workflowData || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -128,22 +164,31 @@ export default function Home() {
             </div>
           )}
 
-          {logs.length > 0 && (
+          {/* Real-time Steps */}
+          {steps.length > 0 && (
             <div className="mt-8">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Agent Status Log</h2>
-              <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm space-y-2 max-h-96 overflow-y-auto">
-                {logs.map((log, index) => (
-                  <div key={index} className="whitespace-pre-wrap">
-                    {log}
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Agent Steps</h2>
+              <div className="space-y-3">
+                {steps.map((step) => (
+                  <div key={step.step} className={`p-4 rounded-lg border-2 ${step.status === 'completed' ? 'bg-green-50 border-green-300' : step.status === 'running' ? 'bg-yellow-50 border-yellow-300 animate-pulse' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="flex items-center gap-3">
+                      {step.status === 'completed' && <span className="text-green-600 text-2xl">✅</span>}
+                      {step.status === 'running' && <span className="text-yellow-600 text-2xl animate-spin">⏳</span>}
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{step.name}</p>
+                        {step.status === 'completed' && <p className="text-sm text-gray-600">Completed</p>}
+                        {step.status === 'running' && <p className="text-sm text-gray-600">In progress...</p>}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {workflowData && (
+          {/* Workflow Data */}
+          {workflowData.seeds.length > 0 && (
             <div className="mt-8 space-y-6">
-              {/* Generated Seeds */}
               {workflowData.seeds.length > 0 && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -164,26 +209,21 @@ export default function Home() {
                 </div>
               )}
 
-              {/* PAA Questions */}
               {workflowData.paaRows.length > 0 && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    📋 People Also Ask Questions ({workflowData.paaRows.length})
+                    📋 People Also Ask ({workflowData.paaRows.length})
                   </h3>
                   <div className="space-y-3">
                     {workflowData.paaRows.slice(0, 10).map((row: any, index: number) => (
                       <div key={index} className="p-3 bg-gray-50 rounded">
                         <p className="font-medium text-gray-900">{row.question}</p>
-                        {row.snippet && (
-                          <p className="text-sm text-gray-600 mt-1">{row.snippet.substring(0, 100)}...</p>
-                        )}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Ranked Questions */}
               {workflowData.rankedQuestions.length > 0 && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -202,7 +242,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Generated FAQ */}
               {workflowData.faqComponent && (
                 <div className="border border-green-300 rounded-lg p-6 bg-green-50">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
