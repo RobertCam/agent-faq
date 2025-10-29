@@ -6,7 +6,9 @@ interface WorkflowData {
   seeds: string[];
   paaRows: any[];
   rankedQuestions: any[];
-  faqComponent: any;
+  faqComponent?: any;
+  comparisonComponent?: any;
+  blogComponent?: any;
 }
 
 interface Step {
@@ -20,6 +22,7 @@ export default function Home() {
   const [brand, setBrand] = useState('Starbucks');
   const [vertical, setVertical] = useState('Coffee / QSR');
   const [region, setRegion] = useState('Vancouver');
+  const [contentType, setContentType] = useState<'FAQ' | 'COMPARISON' | 'BLOG'>('FAQ');
   const [customInstructions, setCustomInstructions] = useState('');
   const [loading, setLoading] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -42,7 +45,7 @@ export default function Home() {
     setError(null);
     setSteps([]);
     setDraftId(null);
-    setWorkflowData({ seeds: [], paaRows: [], rankedQuestions: [], faqComponent: null });
+    setWorkflowData({ seeds: [], paaRows: [], rankedQuestions: [], faqComponent: null, comparisonComponent: null, blogComponent: null });
 
     try {
       const response = await fetch('/api/run-demo-stream', {
@@ -50,7 +53,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ brand, vertical, region, customInstructions }),
+        body: JSON.stringify({ brand, vertical, region, contentType, customInstructions }),
       });
 
       if (!response.ok) throw new Error('Failed to start agent');
@@ -100,10 +103,10 @@ export default function Home() {
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                AI-Driven FAQ Generator
+                AI-Driven Content Generator
               </h1>
               <p className="text-gray-600 mt-2">
-                Generate FAQs automatically using AI agent orchestration with MCP tools.
+                Generate FAQs, comparisons, and blog articles using AI agent orchestration with MCP tools.
               </p>
             </div>
             <a
@@ -161,6 +164,23 @@ export default function Home() {
             </div>
 
             <div>
+              <label htmlFor="contentType" className="block text-sm font-medium text-gray-700 mb-2">
+                Content Type
+              </label>
+              <select
+                id="contentType"
+                value={contentType}
+                onChange={(e) => setContentType(e.target.value as 'FAQ' | 'COMPARISON' | 'BLOG')}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={loading}
+              >
+                <option value="FAQ">FAQ</option>
+                <option value="COMPARISON">Product Comparison</option>
+                <option value="BLOG">Blog Article</option>
+              </select>
+            </div>
+
+            <div>
               <label htmlFor="customInstructions" className="block text-sm font-medium text-gray-700 mb-2">
                 Custom Instructions (Optional)
               </label>
@@ -182,10 +202,10 @@ export default function Home() {
           <button
             onClick={handleRun}
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Generating FAQ...' : 'Run 7-day fetch now'}
-          </button>
+              className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? 'Generating content...' : 'Run 7-day fetch now'}
+            </button>
 
           {error && (
             <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -286,13 +306,55 @@ export default function Home() {
                   </div>
                 </div>
               )}
+
+              {workflowData.comparisonComponent && (
+                <div className="border border-blue-300 rounded-lg p-6 bg-blue-50">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    ✅ Generated Product Comparison
+                  </h3>
+                  <div className="bg-white p-4 rounded-lg">
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      {workflowData.comparisonComponent.brand} vs {workflowData.comparisonComponent.competitor}
+                    </h4>
+                    <div className="space-y-3">
+                      {workflowData.comparisonComponent.items.map((item: any, index: number) => (
+                        <div key={index} className="grid grid-cols-3 gap-2 py-2 border-b last:border-0">
+                          <div className="font-medium text-gray-900">{item.feature}</div>
+                          <div className="text-gray-700">{item.brandValue}</div>
+                          <div className="text-gray-600">{item.competitorValue}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {workflowData.blogComponent && (
+                <div className="border border-orange-300 rounded-lg p-6 bg-orange-50">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    ✅ Generated Blog Article
+                  </h3>
+                  <div className="bg-white p-4 rounded-lg">
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">{workflowData.blogComponent.title}</h4>
+                    <p className="text-sm text-gray-600 mb-4">{workflowData.blogComponent.metaDescription}</p>
+                    <div className="space-y-4">
+                      {workflowData.blogComponent.sections.map((section: any, index: number) => (
+                        <div key={index}>
+                          <h5 className="font-semibold text-gray-900 mb-2">{section.heading}</h5>
+                          <p className="text-gray-700 text-sm whitespace-pre-wrap">{section.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {draftId && (
             <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-green-800 text-sm mb-3">
-                ✅ FAQ generated successfully!
+                ✅ Content generated successfully!
               </p>
               <a
                 href={`/editor/${draftId}`}

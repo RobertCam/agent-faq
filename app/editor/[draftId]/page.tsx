@@ -37,16 +37,38 @@ export default function EditorPage() {
 
         setDraft(data.draft);
         
-        // Convert to PUCK data format
-        setPuckData({
-          content: [
-            {
-              type: 'FaqComponent',
-              props: data.draft.faqComponent,
-            },
-          ],
-          root: { props: {}, title: 'FAQ Page' },
-        });
+        // Convert to PUCK data format based on content type
+        if (data.draft.contentType === 'FAQ') {
+          setPuckData({
+            content: [
+              {
+                type: 'FaqComponent',
+                props: data.draft.content,
+              },
+            ],
+            root: { props: {}, title: 'FAQ Page' },
+          });
+        } else if (data.draft.contentType === 'COMPARISON') {
+          setPuckData({
+            content: [
+              {
+                type: 'ComparisonComponent',
+                props: data.draft.content,
+              },
+            ],
+            root: { props: {}, title: 'Comparison Page' },
+          });
+        } else if (data.draft.contentType === 'BLOG') {
+          setPuckData({
+            content: [
+              {
+                type: 'BlogComponent',
+                props: data.draft.content,
+              },
+            ],
+            root: { props: {}, title: 'Blog Article' },
+          });
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -74,7 +96,7 @@ export default function EditorPage() {
       if (data.success) {
         setApproved(true);
         setIsEditing(false);
-        console.log('Approved FAQ component:', draft?.faqComponent);
+        console.log('Approved content:', draft?.content);
       } else {
         throw new Error(data.error || 'Failed to approve draft');
       }
@@ -126,7 +148,7 @@ export default function EditorPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-900">
-                Review & Edit FAQ
+                Review & Edit {draft.contentType === 'FAQ' ? 'FAQ' : draft.contentType === 'COMPARISON' ? 'Comparison' : 'Blog Article'}
               </h1>
               <p className="text-sm text-gray-600">
                 Brand: {draft.brand} | Vertical: {draft.vertical} | Region: {draft.region}
@@ -138,7 +160,7 @@ export default function EditorPage() {
                   onClick={() => setIsEditing(true)}
                   className="bg-blue-600 text-white py-2 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors"
                 >
-                  Edit FAQ
+                  Edit
                 </button>
               )}
               {isEditing && (
@@ -153,7 +175,7 @@ export default function EditorPage() {
                 onClick={handleApprove}
                 className="bg-green-600 text-white py-2 px-6 rounded-lg font-medium hover:bg-green-700 transition-colors"
               >
-                Approve FAQ
+                Approve
               </button>
             </div>
           </div>

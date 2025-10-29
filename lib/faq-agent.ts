@@ -78,7 +78,8 @@ export async function runFAQAgent(params: {
       brand: params.brand,
       vertical: params.vertical,
       region: params.region,
-      faqComponent: faqResult.faqComponent,
+      contentType: 'FAQ',
+      content: faqResult.faqComponent,
     });
     logs.push(`✅ Draft stored with ID: ${draftResult.draftId}`);
     

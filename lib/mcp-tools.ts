@@ -13,10 +13,23 @@ import {
   DraftStorePutInput,
   DraftStoreGetInput,
   Draft,
+  ContentType,
+  RecommendContentTypeInput,
+  ContentRecommendation,
+  ComparisonComponentProps,
+  BlogComponentProps,
+  GenerateComparisonInput,
+  GenerateBlogInput,
 } from './types';
 
 // In-memory draft storage
-const drafts = new Map<string, Draft>();
+// Use globalThis to persist across hot reloads in dev mode
+function getDraftsMap(): Map<string, Draft> {
+  if (!(globalThis as any).__draftsStore) {
+    (globalThis as any).__draftsStore = new Map<string, Draft>();
+  }
+  return (globalThis as any).__draftsStore;
+}
 
 // OpenAI client
 const openai = new OpenAI({
@@ -175,7 +188,107 @@ export async function rankQuestions(input: RankQuestionsInput): Promise<{ top: R
 }
 
 /**
- * Tool 4: Generate FAQ JSON using OpenAI
+ * Tool 4: Recommend content type based on PAA data
+ */
+export async function recommendContentType(input: RecommendContentTypeInput): Promise<ContentRecommendation> {
+  const { brand, vertical, region, paaRows } = input;
+  
+  console.log(`[recommendContentType] Analyzing ${paaRows.length} PAA questions`);
+  
+  // Analyze question patterns to determine content type
+  const questions = paaRows.map(row => row.question.toLowerCase());
+  
+  // Keywords for each content type
+  const faqKeywords = ['what', 'when', 'where', 'how', 'why', 'who', 'can i', 'do they', 'does', 'is there'];
+  const comparisonKeywords = ['vs', 'versus', 'or', 'better', 'which', 'difference', 'compare', 'verses'];
+  const blogKeywords = ['how to', 'guide', 'tips', 'tutorial', 'steps', 'ways to', 'how do'];
+  
+  let faqScore = 0;
+  let comparisonScore = 0;
+  let blogScore = 0;
+  
+  for (const question of questions) {
+    // Check for FAQ patterns
+    if (faqKeywords.some(k => question.includes(k))) {
+      faqScore += 2;
+    }
+    
+    // Check for comparison patterns
+    if (comparisonKeywords.some(k => question.includes(k))) {
+      comparisonScore += 3; // Higher weight for comparisons
+    }
+    
+    // Check for blog patterns
+    if (blogKeywords.some(k => question.includes(k))) {
+      blogScore += 2;
+    }
+  }
+  
+  // Determine recommended type(s)
+  const scores = [
+    { type: 'FAQ' as ContentType, score: faqScore },
+    { type: 'COMPARISON' as ContentType, score: comparisonScore },
+    { type: 'BLOG' as ContentType, score: blogScore },
+  ];
+  
+  // Sort by score
+  scores.sort((a, b) => b.score - a.score);
+  
+  const primaryType = scores[0].type;
+  const primaryScore = scores[0].score;
+  const secondaryScore = scores[1].score;
+  
+  // Calculate confidence
+  const confidence = Math.min(0.95, primaryScore / (questions.length * 2));
+  
+  // Determine if we should generate multiple content types
+  // If secondary score is within 30% of primary, generate both
+  const shouldGenerateSecondary = primaryScore > 0 && secondaryScore >= primaryScore * 0.7;
+  
+  let reasoning = '';
+  const secondaryTypes: ContentType[] = [];
+  
+  if (primaryType === 'COMPARISON') {
+    reasoning = 'Questions show strong comparison intent with keywords like "vs", "better", "which"';
+    if (shouldGenerateSecondary && scores[1].score > 0) {
+      secondaryTypes.push(scores[1].type);
+      reasoning += `. Also detected ${scores[1].type.toLowerCase()} patterns for supplementary content.`;
+    }
+  } else if (primaryType === 'BLOG') {
+    reasoning = 'Questions show tutorial/how-to intent with actionable keywords';
+    if (shouldGenerateSecondary && scores[1].score > 0) {
+      secondaryTypes.push(scores[1].type);
+      reasoning += `. Also detected ${scores[1].type.toLowerCase()} patterns for supplementary content.`;
+    }
+  } else {
+    reasoning = 'Questions are primarily informational and best suited for FAQ format';
+    if (shouldGenerateSecondary && scores[1].score > 0) {
+      secondaryTypes.push(scores[1].type);
+      reasoning += `. Also detected ${scores[1].type.toLowerCase()} patterns for supplementary content.`;
+    }
+  }
+  
+  const keyInsights = [
+    `Discovered ${questions.length} distinct questions`,
+    `Primary: ${primaryType} (${Math.round((primaryScore / (questions.length * 2)) * 100)}% relevance)`,
+    secondaryTypes.length > 0 
+      ? `Secondary: ${secondaryTypes.join(', ')} (${Math.round((secondaryScore / (questions.length * 2)) * 100)}% relevance)`
+      : `Single content type recommended`,
+  ];
+  
+  console.log(`[recommendContentType] Recommended: ${primaryType}${secondaryTypes.length > 0 ? ` + ${secondaryTypes.join(', ')}` : ''}`);
+  
+  return {
+    primaryType,
+    secondaryTypes: secondaryTypes.length > 0 ? secondaryTypes : undefined,
+    confidence,
+    reasoning,
+    keyInsights,
+  };
+}
+
+/**
+ * Tool 5: Generate FAQ JSON using OpenAI
  */
 export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqComponent: FAQComponentProps }> {
   const { brand, region, questions, customInstructions } = input;
@@ -256,10 +369,187 @@ Requirements:
 }
 
 /**
- * Tool 5: Draft store - Put
+ * Tool 6: Generate Comparison JSON
+ */
+export async function generateComparisonJSON(input: GenerateComparisonInput): Promise<{ comparisonComponent: ComparisonComponentProps }> {
+  const { brand, vertical, region, questions, customInstructions } = input;
+  
+  console.log(`[generateComparisonJSON] Generating comparison for ${questions.length} questions`);
+  
+  const questionList = questions.slice(0, 5).map((q, i) => `${i + 1}. ${q.question}`).join('\n');
+  
+  let prompt = `You are a content writer for ${brand} in ${vertical}. 
+
+Analyze these questions and generate a product/service comparison:
+${questionList}
+
+Requirements:
+- Create a comparison table format
+- Identify the main competitor or alternative
+- Compare 5-7 key factors (price, features, quality, convenience, etc.)
+- Each comparison should have: Feature name, Your brand's value, Competitor's value
+- Be factual and specific
+
+Return ONLY a JSON object with this exact structure:
+{
+  "competitor": "Competitor name or alternative",
+  "items": [
+    {
+      "feature": "Feature name",
+      "brandValue": "Value for your brand",
+      "competitorValue": "Value for competitor"
+    }
+  ]
+}`;
+
+  if (customInstructions) {
+    prompt += `\n\nAdditional instructions:\n${customInstructions}`;
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    });
+    
+    const responseContent = completion.choices[0].message.content;
+    if (!responseContent) {
+      throw new Error('No response from OpenAI');
+    }
+    
+    const generated = JSON.parse(responseContent);
+    const items = generated.items || [];
+    
+    const schemaOrg = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: `${brand} vs ${generated.competitor || 'Competitor'}`,
+      category: vertical,
+    };
+    
+    const comparisonComponent: ComparisonComponentProps = {
+      brand,
+      competitor: generated.competitor,
+      category: vertical,
+      region,
+      items,
+      schemaOrg,
+    };
+    
+    console.log(`[generateComparisonJSON] Generated comparison with ${items.length} features`);
+    
+    return { comparisonComponent };
+  } catch (error) {
+    console.error('[generateComparisonJSON] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Tool 7: Generate Blog JSON
+ */
+export async function generateBlogJSON(input: GenerateBlogInput): Promise<{ blogComponent: BlogComponentProps }> {
+  const { brand, vertical, region, questions, customInstructions } = input;
+  
+  console.log(`[generateBlogJSON] Generating blog for ${questions.length} questions`);
+  
+  // Generate article title from questions
+  const titlePrompt = `Generate a compelling blog post title based on these questions about ${brand} in ${vertical}:
+${questions.slice(0, 5).map(q => q.question).join('\n')}`;
+  
+  try {
+    const titleCompletion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: titlePrompt }],
+      temperature: 0.8,
+    });
+    
+    const title = titleCompletion.choices[0].message.content || `${brand} in ${region}: Everything You Need to Know`;
+    
+    // Generate article structure
+    let blogPrompt = `You are a content writer. Create a detailed blog article about ${brand} in ${vertical} (${region}).
+
+Title: ${title}
+
+Questions to address:
+${questions.slice(0, 8).map((q, i) => `${i + 1}. ${q.question}`).join('\n')}
+
+Requirements:
+- Create 4-6 sections with headings and content
+- Each section should have a heading (H2) and 2-3 paragraphs
+- Write in a friendly, informative tone
+- Include meta description (150 characters)
+
+Return ONLY a JSON object with this structure:
+{
+  "metaDescription": "SEO meta description",
+  "sections": [
+    {
+      "heading": "Section heading",
+      "content": "Section content (2-3 paragraphs)",
+      "order": 1
+    }
+  ]
+}`;
+
+    if (customInstructions) {
+      blogPrompt += `\n\nAdditional instructions:\n${customInstructions}`;
+    }
+    
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: blogPrompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    });
+    
+    const responseContent = completion.choices[0].message.content;
+    if (!responseContent) {
+      throw new Error('No response from OpenAI');
+    }
+    
+    const generated = JSON.parse(responseContent);
+    const sections = (generated.sections || []).map((s: any, i: number) => ({
+      ...s,
+      order: s.order || i + 1,
+    }));
+    
+    const schemaOrg = {
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: title,
+      author: {
+        '@type': 'Organization',
+        name: brand,
+      },
+    };
+    
+    const blogComponent: BlogComponentProps = {
+      title,
+      brand,
+      vertical,
+      region,
+      metaDescription: generated.metaDescription || title,
+      sections,
+      schemaOrg,
+    };
+    
+    console.log(`[generateBlogJSON] Generated blog with ${sections.length} sections`);
+    
+    return { blogComponent };
+  } catch (error) {
+    console.error('[generateBlogJSON] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Tool 8: Draft store - Put
  */
 export async function draftStorePut(input: DraftStorePutInput): Promise<{ draftId: string }> {
-  const { brand, vertical, region, faqComponent } = input;
+  const { brand, vertical, region, contentType, content } = input;
   
   const draftId = `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
@@ -268,13 +558,16 @@ export async function draftStorePut(input: DraftStorePutInput): Promise<{ draftI
     brand,
     vertical,
     region,
-    faqComponent,
+    contentType,
+    content,
     createdAt: new Date().toISOString(),
   };
   
+  const drafts = getDraftsMap();
   drafts.set(draftId, draft);
   
-  console.log(`[draftStorePut] Stored draft ${draftId}`);
+  console.log(`[draftStorePut] Stored draft ${draftId} (type: ${contentType})`);
+  console.log(`[draftStorePut] Total drafts in storage: ${drafts.size}`);
   
   return { draftId };
 }
@@ -284,6 +577,11 @@ export async function draftStorePut(input: DraftStorePutInput): Promise<{ draftI
  */
 export async function draftStoreGet(input: DraftStoreGetInput): Promise<{ draft: Draft }> {
   const { draftId } = input;
+  const drafts = getDraftsMap();
+  
+  console.log(`[draftStoreGet] Looking for draft ${draftId}`);
+  console.log(`[draftStoreGet] Total drafts in storage: ${drafts.size}`);
+  console.log(`[draftStoreGet] All draft IDs: ${Array.from(drafts.keys()).join(', ')}`);
   
   const draft = drafts.get(draftId);
   

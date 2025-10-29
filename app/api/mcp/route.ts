@@ -3,7 +3,10 @@ import {
   expandSeeds,
   fetchPAA,
   rankQuestions,
+  recommendContentType,
   generateFAQJSON,
+  generateComparisonJSON,
+  generateBlogJSON,
   draftStorePut,
   draftStoreGet,
 } from '@/lib/mcp-tools';
@@ -11,7 +14,10 @@ import {
   ExpandSeedsInput,
   FetchPAAInput,
   RankQuestionsInput,
+  RecommendContentTypeInput,
   GenerateFAQInput,
+  GenerateComparisonInput,
+  GenerateBlogInput,
   DraftStorePutInput,
   DraftStoreGetInput,
 } from '@/lib/types';
@@ -41,9 +47,27 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ result });
       }
 
+      case 'recommend_content_type': {
+        const input = body.args as RecommendContentTypeInput;
+        const result = await recommendContentType(input);
+        return NextResponse.json({ result });
+      }
+
       case 'generate_faq_json': {
         const input = body.args as GenerateFAQInput;
         const result = await generateFAQJSON(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'generate_comparison_json': {
+        const input = body.args as GenerateComparisonInput;
+        const result = await generateComparisonJSON(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'generate_blog_json': {
+        const input = body.args as GenerateBlogInput;
+        const result = await generateBlogJSON(input);
         return NextResponse.json({ result });
       }
 
