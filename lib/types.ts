@@ -1,5 +1,5 @@
 // Content Types
-export type ContentType = 'FAQ' | 'COMPARISON' | 'BLOG';
+export type ContentType = 'FAQ' | 'COMPARISON' | 'BLOG' | 'TROUBLESHOOTING';
 
 export interface FAQItem {
   question: string;
@@ -63,7 +63,8 @@ export interface BlogComponentProps {
 export type ContentComponent = 
   | ({ type: 'FAQ'; props: FAQComponentProps })
   | ({ type: 'COMPARISON'; props: ComparisonComponentProps })
-  | ({ type: 'BLOG'; props: BlogComponentProps });
+  | ({ type: 'BLOG'; props: BlogComponentProps })
+  | ({ type: 'TROUBLESHOOTING'; props: TroubleshootingComponentProps });
 
 export interface Draft {
   id: string;
@@ -98,6 +99,7 @@ export interface FetchPAAInput {
   seeds: string[];
   location?: string;
   hl?: string;
+  troubleshootingMode?: boolean; // Enhanced mode for troubleshooting queries
 }
 
 export interface RankQuestionsInput {
@@ -154,5 +156,55 @@ export interface GenerateBlogInput {
   region: string;
   questions: RankedQuestion[];
   customInstructions?: string;
+}
+
+// Troubleshooting Content Types
+export interface TroubleshootingSource {
+  url: string;
+  snippet: string;
+  title?: string;
+}
+
+export type FactualConfidence = 'high' | 'medium' | 'low' | 'missing';
+
+export interface TroubleshootingItem {
+  issue: string;
+  solution: string;
+  steps?: string[];
+  sources?: TroubleshootingSource[];
+  factualConfidence?: FactualConfidence;
+  userGenerated?: boolean; // Flag for user-added content
+}
+
+export interface TroubleshootingComponentProps {
+  title: string;
+  brand: string;
+  vertical: string;
+  region?: string;
+  supportCategory: string;
+  parentCategory?: string;
+  breadcrumbs: Array<{ label: string; url?: string }>;
+  sitemapPriority?: number; // 0.0 to 1.0
+  items: TroubleshootingItem[];
+  schemaOrg: any;
+}
+
+export interface GenerateTroubleshootingInput {
+  brand: string;
+  vertical: string;
+  region: string;
+  issues: RankedQuestion[];
+  customInstructions?: string;
+}
+
+export interface RankTroubleshootingIssuesInput {
+  brand: string;
+  rows: PAARow[];
+}
+
+export interface RankedIssue extends PAARow {
+  score: number;
+  reasoning: string;
+  issueType?: string; // e.g., "technical", "billing", "service"
 }
 

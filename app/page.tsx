@@ -5,10 +5,12 @@ import { useState } from 'react';
 interface WorkflowData {
   seeds: string[];
   paaRows: any[];
-  rankedQuestions: any[];
+  rankedQuestions?: any[];
+  rankedIssues?: any[];
   faqComponent?: any;
   comparisonComponent?: any;
   blogComponent?: any;
+  troubleshootingComponent?: any;
 }
 
 interface Step {
@@ -22,7 +24,7 @@ export default function Home() {
   const [brand, setBrand] = useState('Starbucks');
   const [vertical, setVertical] = useState('Coffee / QSR');
   const [region, setRegion] = useState('Vancouver');
-  const [contentType, setContentType] = useState<'FAQ' | 'COMPARISON' | 'BLOG'>('FAQ');
+  const [contentType, setContentType] = useState<'FAQ' | 'COMPARISON' | 'BLOG' | 'TROUBLESHOOTING'>('FAQ');
   const [customInstructions, setCustomInstructions] = useState('');
   const [loading, setLoading] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -45,7 +47,7 @@ export default function Home() {
     setError(null);
     setSteps([]);
     setDraftId(null);
-    setWorkflowData({ seeds: [], paaRows: [], rankedQuestions: [], faqComponent: null, comparisonComponent: null, blogComponent: null });
+    setWorkflowData({ seeds: [], paaRows: [], rankedQuestions: [], rankedIssues: [], faqComponent: null, comparisonComponent: null, blogComponent: null, troubleshootingComponent: null });
 
     try {
       const response = await fetch('/api/run-demo-stream', {
@@ -170,13 +172,14 @@ export default function Home() {
               <select
                 id="contentType"
                 value={contentType}
-                onChange={(e) => setContentType(e.target.value as 'FAQ' | 'COMPARISON' | 'BLOG')}
+                onChange={(e) => setContentType(e.target.value as 'FAQ' | 'COMPARISON' | 'BLOG' | 'TROUBLESHOOTING')}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={loading}
               >
                 <option value="FAQ">FAQ</option>
                 <option value="COMPARISON">Product Comparison</option>
                 <option value="BLOG">Blog Article</option>
+                <option value="TROUBLESHOOTING">Troubleshooting Article</option>
               </select>
             </div>
 
@@ -273,7 +276,7 @@ export default function Home() {
                 </div>
               )}
 
-              {workflowData.rankedQuestions.length > 0 && (
+              {(workflowData.rankedQuestions && workflowData.rankedQuestions.length > 0) && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
                     ⭐ Top Ranked Questions ({workflowData.rankedQuestions.length})
@@ -284,6 +287,29 @@ export default function Home() {
                         <div className="flex-1">
                           <p className="font-medium text-gray-900">{q.question}</p>
                           <p className="text-xs text-gray-500 mt-1">Score: {q.score} • {q.reasoning}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(workflowData.rankedIssues && workflowData.rankedIssues.length > 0) && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                    🔧 Top Ranked Issues ({workflowData.rankedIssues.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {workflowData.rankedIssues.map((issue: any, index: number) => (
+                      <div key={index} className="p-3 bg-orange-50 rounded flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{issue.question}</p>
+                          <p className="text-xs text-gray-500 mt-1">Score: {issue.score} • {issue.reasoning}</p>
+                          {issue.issueType && (
+                            <span className="inline-block mt-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                              {issue.issueType}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -342,6 +368,48 @@ export default function Home() {
                         <div key={index}>
                           <h5 className="font-semibold text-gray-900 mb-2">{section.heading}</h5>
                           <p className="text-gray-700 text-sm whitespace-pre-wrap">{section.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {workflowData.troubleshootingComponent && (
+                <div className="border border-purple-300 rounded-lg p-6 bg-purple-50">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    ✅ Generated Troubleshooting Article ({workflowData.troubleshootingComponent.items.length} items)
+                  </h3>
+                  <div className="bg-white p-4 rounded-lg">
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">{workflowData.troubleshootingComponent.title}</h4>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Category: {workflowData.troubleshootingComponent.supportCategory}
+                    </p>
+                    <div className="space-y-4 mt-4">
+                      {workflowData.troubleshootingComponent.items.map((item: any, index: number) => (
+                        <div key={index} className="border border-gray-200 rounded p-3">
+                          <div className="flex items-start justify-between mb-2">
+                            <h5 className="font-semibold text-gray-900 flex-1">{item.issue}</h5>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              item.factualConfidence === 'high' ? 'bg-green-100 text-green-800' :
+                              item.factualConfidence === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              item.factualConfidence === 'low' ? 'bg-orange-100 text-orange-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {item.factualConfidence || 'missing'}
+                            </span>
+                          </div>
+                          <p className="text-gray-700 text-sm mb-2">{item.solution}</p>
+                          {item.steps && item.steps.length > 0 && (
+                            <div className="text-xs text-gray-600 mt-2">
+                              <strong>Steps:</strong> {item.steps.length} step(s)
+                            </div>
+                          )}
+                          {item.sources && item.sources.length > 0 && (
+                            <div className="text-xs text-gray-600 mt-2">
+                              <strong>Sources:</strong> {item.sources.length} source(s)
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

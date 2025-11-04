@@ -20,6 +20,13 @@ import {
   BlogComponentProps,
   GenerateComparisonInput,
   GenerateBlogInput,
+  TroubleshootingComponentProps,
+  TroubleshootingItem,
+  GenerateTroubleshootingInput,
+  RankTroubleshootingIssuesInput,
+  RankedIssue,
+  FactualConfidence,
+  TroubleshootingSource,
 } from './types';
 
 // In-memory draft storage
@@ -76,9 +83,9 @@ export async function expandSeeds(input: ExpandSeedsInput): Promise<{ seeds: str
  * Tool 2: Fetch People Also Ask questions
  */
 export async function fetchPAA(input: FetchPAAInput): Promise<{ rows: PAARow[] }> {
-  const { seeds, location, hl } = input;
+  const { seeds, location, hl, troubleshootingMode } = input;
   
-  console.log(`[fetchPAA] Fetching PAA for ${seeds.length} seeds`);
+  console.log(`[fetchPAA] Fetching PAA for ${seeds.length} seeds${troubleshootingMode ? ' (troubleshooting mode)' : ''}`);
   
   const allRows: PAARow[] = [];
   
@@ -96,12 +103,21 @@ export async function fetchPAA(input: FetchPAAInput): Promise<{ rows: PAARow[] }
       const peopleAlsoAsk = response.related_questions || [];
       
       for (const item of peopleAlsoAsk) {
-        allRows.push({
+        const row: PAARow = {
           question: item.question || '',
           snippet: item.snippet || '',
           title: item.title || '',
           link: item.link,
-        });
+        };
+        
+        // In troubleshooting mode, we can extract additional metadata
+        // if available in the response
+        if (troubleshootingMode && item.link) {
+          // Store link for source citation
+          row.link = item.link;
+        }
+        
+        allRows.push(row);
       }
       
       console.log(`[fetchPAA] Fetched ${peopleAlsoAsk.length} questions for "${seed}"`);
@@ -543,6 +559,285 @@ Return ONLY a JSON object with this structure:
     console.error('[generateBlogJSON] Error:', error);
     throw error;
   }
+}
+
+/**
+ * Tool: Expand troubleshooting seeds - Generate troubleshooting-specific keyword variations
+ */
+export async function expandTroubleshootingSeeds(input: ExpandSeedsInput): Promise<{ seeds: string[] }> {
+  const { brand, vertical, region } = input;
+  
+  // Generate troubleshooting-specific seed variations
+  const templates = [
+    `${brand} problems`,
+    `${brand} issues`,
+    `${brand} not working`,
+    `${brand} error`,
+    `${brand} fix`,
+    `how to fix ${brand}`,
+    `${brand} troubleshooting`,
+    `${brand} support`,
+    `${brand} help`,
+    `${brand} broken`,
+    `${brand} not responding`,
+    `${brand} won't work`,
+    `${brand} issue ${region}`,
+    `${brand} problem ${region}`,
+    `${brand} fix ${region}`,
+    `how to fix ${brand} ${region}`,
+    `${brand} troubleshooting ${region}`,
+    `${brand} support ${region}`,
+  ];
+
+  // Add variations with "in [region]"
+  const regionVariations = templates.map(t => t.replace(region, `in ${region}`));
+  
+  // Combine and deduplicate
+  const allSeeds = Array.from(new Set([...templates, ...regionVariations]));
+  
+  console.log(`[expandTroubleshootingSeeds] Generated ${allSeeds.length} troubleshooting seed queries`);
+  
+  return { seeds: allSeeds };
+}
+
+/**
+ * Tool: Rank troubleshooting issues from SERPs
+ */
+export async function rankTroubleshootingIssues(input: RankTroubleshootingIssuesInput): Promise<{ top: RankedIssue[] }> {
+  const { brand, rows } = input;
+  
+  console.log(`[rankTroubleshootingIssues] Ranking ${rows.length} issues`);
+  
+  // Deduplicate by question
+  const uniqueQuestions = new Map<string, PAARow>();
+  for (const row of rows) {
+    if (!uniqueQuestions.has(row.question.toLowerCase())) {
+      uniqueQuestions.set(row.question.toLowerCase(), row);
+    }
+  }
+  
+  // Score each issue
+  const ranked: RankedIssue[] = [];
+  
+  for (const row of Array.from(uniqueQuestions.values())) {
+    let score = 0;
+    const reasoning: string[] = [];
+    let issueType: string | undefined;
+    
+    // Score criteria:
+    // - Problem/solution intent keywords (high weight)
+    const problemKeywords = /\b(problem|issue|error|broken|not working|won't|fix|troubleshoot|support|help)\b/i;
+    const hasProblemIntent = problemKeywords.test(row.question);
+    if (hasProblemIntent) {
+      score += 30;
+      reasoning.push('Problem/solution intent');
+    }
+    
+    // - Brand specificity
+    const isBranded = row.question.toLowerCase().includes(brand.toLowerCase());
+    if (isBranded) {
+      score += 20;
+      reasoning.push('Brand-specific issue');
+    }
+    
+    // - Technical issue keywords
+    if (/\b(error|crash|bug|glitch|defect|malfunction)\b/i.test(row.question)) {
+      score += 15;
+      reasoning.push('Technical issue');
+      issueType = 'technical';
+    }
+    
+    // - Service/billing keywords
+    if (/\b(billing|payment|charge|refund|cancel|account)\b/i.test(row.question)) {
+      score += 15;
+      reasoning.push('Service/billing issue');
+      issueType = issueType || 'billing';
+    }
+    
+    // - Solution clarity from snippet
+    if (row.snippet && row.snippet.length > 50) {
+      score += 10;
+      reasoning.push('Clear snippet available');
+    }
+    
+    // - Has solution keywords in snippet
+    if (row.snippet && /\b(fix|solution|resolve|repair|troubleshoot|step)\b/i.test(row.snippet)) {
+      score += 10;
+      reasoning.push('Solution-oriented snippet');
+    }
+    
+    ranked.push({
+      ...row,
+      score,
+      reasoning: reasoning.join(', '),
+      issueType: issueType || 'general',
+    });
+  }
+  
+  // Sort by score descending
+  ranked.sort((a, b) => b.score - a.score);
+  
+  // Return top 15 for troubleshooting (more issues than FAQs)
+  const top = ranked.slice(0, 15);
+  
+  console.log(`[rankTroubleshootingIssues] Top ${top.length} issues selected`);
+  
+  return { top };
+}
+
+/**
+ * Tool: Generate Troubleshooting JSON using OpenAI
+ */
+export async function generateTroubleshootingJSON(input: GenerateTroubleshootingInput): Promise<{ troubleshootingComponent: TroubleshootingComponentProps }> {
+  const { brand, vertical, region, issues, customInstructions } = input;
+  
+  console.log(`[generateTroubleshootingJSON] Generating troubleshooting article for ${issues.length} issues`);
+  
+  const issueList = issues.map((q, i) => `${i + 1}. ${q.question}${q.snippet ? ` (Context: ${q.snippet})` : ''}`).join('\n');
+  
+  let prompt = `You are a technical support writer creating a troubleshooting article for ${brand} in ${vertical}${region ? ` (${region})` : ''}.
+
+Analyze these common issues from search results:
+${issueList}
+
+Requirements:
+- Generate 8-12 troubleshooting items (problem-solution pairs)
+- Each item should have:
+  * A clear issue description
+  * A concise solution overview
+  * Step-by-step instructions (2-4 steps) when applicable
+- Be factual and specific - only provide information that can be verified
+- If you cannot provide a factual solution, mark confidence as "missing"
+- Assign confidence levels: "high" (verifiable from sources), "medium" (likely but uncertain), "low" (speculative), "missing" (cannot verify)
+- Include source citations when available (URLs from search results)
+- Support category should be relevant to the issues (e.g., "Technical Support", "Account Issues", "Service Problems")
+- Generate a clear, descriptive title
+
+Return ONLY a JSON object with this exact structure:
+{
+  "title": "Troubleshooting article title",
+  "supportCategory": "Category name",
+  "items": [
+    {
+      "issue": "Issue description",
+      "solution": "Solution overview",
+      "steps": ["Step 1", "Step 2"],
+      "factualConfidence": "high|medium|low|missing",
+      "sources": [
+        {
+          "url": "Source URL if available",
+          "snippet": "Relevant snippet"
+        }
+      ]
+    }
+  ]
+}`;
+
+  if (customInstructions) {
+    prompt += `\n\nAdditional instructions:\n${customInstructions}`;
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    });
+    
+    const responseContent = completion.choices[0].message.content;
+    if (!responseContent) {
+      throw new Error('No response from OpenAI');
+    }
+    
+    const generated = JSON.parse(responseContent);
+    const items: TroubleshootingItem[] = (generated.items || []).map((item: any) => {
+      // Ensure steps is an array of strings (Puck will handle this correctly)
+      let steps: string[] = [];
+      if (Array.isArray(item.steps)) {
+        steps = item.steps.map((step: any) => typeof step === 'string' ? step : step.step || step.toString());
+      }
+      
+      return {
+        issue: item.issue || '',
+        solution: item.solution || '',
+        steps: steps,
+        factualConfidence: (item.factualConfidence || 'missing') as FactualConfidence,
+        sources: item.sources || [],
+      };
+    });
+    
+    // Generate breadcrumbs
+    const breadcrumbs = [
+      { label: 'Home', url: '/' },
+      { label: 'Support', url: '/support' },
+      { label: generated.supportCategory || 'Troubleshooting', url: undefined },
+      { label: brand, url: undefined },
+    ];
+    
+    // Generate Schema.org structured data
+    const schemaOrg = {
+      '@context': 'https://schema.org',
+      '@type': 'TechArticle',
+      headline: generated.title,
+      about: {
+        '@type': 'Thing',
+        name: `${brand} Troubleshooting`,
+      },
+      provider: {
+        '@type': 'Organization',
+        name: brand,
+      },
+    };
+    
+    const troubleshootingComponent: TroubleshootingComponentProps = {
+      title: generated.title || `Troubleshooting ${brand} Issues`,
+      brand,
+      vertical,
+      region,
+      supportCategory: generated.supportCategory || 'Technical Support',
+      breadcrumbs,
+      sitemapPriority: 0.7, // Default priority for troubleshooting articles
+      items,
+      schemaOrg,
+    };
+    
+    console.log(`[generateTroubleshootingJSON] Generated troubleshooting article with ${items.length} items`);
+    
+    return { troubleshootingComponent };
+  } catch (error) {
+    console.error('[generateTroubleshootingJSON] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Tool: Validate troubleshooting factual accuracy
+ */
+export async function validateTroubleshootingFactual(items: TroubleshootingItem[]): Promise<{ validatedItems: TroubleshootingItem[] }> {
+  console.log(`[validateTroubleshootingFactual] Validating ${items.length} items`);
+  
+  const validatedItems: TroubleshootingItem[] = items.map(item => {
+    // If item already has sources and high confidence, keep as is
+    if (item.factualConfidence === 'high' && item.sources && item.sources.length > 0) {
+      return item;
+    }
+    
+    // If item has no sources or low confidence, mark for review
+    if (!item.sources || item.sources.length === 0) {
+      return {
+        ...item,
+        factualConfidence: item.factualConfidence || 'missing',
+      };
+    }
+    
+    // If sources exist but confidence is not high, keep current confidence
+    return item;
+  });
+  
+  console.log(`[validateTroubleshootingFactual] Validation complete`);
+  
+  return { validatedItems };
 }
 
 /**

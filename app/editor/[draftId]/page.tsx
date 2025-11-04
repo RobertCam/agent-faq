@@ -68,6 +68,16 @@ export default function EditorPage() {
             ],
             root: { props: {}, title: 'Blog Article' },
           });
+        } else if (data.draft.contentType === 'TROUBLESHOOTING') {
+          setPuckData({
+            content: [
+              {
+                type: 'TroubleshootingComponent',
+                props: data.draft.content,
+              },
+            ],
+            root: { props: {}, title: 'Troubleshooting Article' },
+          });
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
@@ -148,7 +158,7 @@ export default function EditorPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-900">
-                Review & Edit {draft.contentType === 'FAQ' ? 'FAQ' : draft.contentType === 'COMPARISON' ? 'Comparison' : 'Blog Article'}
+                Review & Edit {draft.contentType === 'FAQ' ? 'FAQ' : draft.contentType === 'COMPARISON' ? 'Comparison' : draft.contentType === 'BLOG' ? 'Blog Article' : 'Troubleshooting Article'}
               </h1>
               <p className="text-sm text-gray-600">
                 Brand: {draft.brand} | Vertical: {draft.vertical} | Region: {draft.region}
@@ -200,12 +210,23 @@ export default function EditorPage() {
             {/* Preview Mode - Show as full webpage */}
             <div className="bg-white rounded-lg shadow-lg overflow-hidden">
               {/* Hero Section */}
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-12 text-center">
+              <div className={`bg-gradient-to-r text-white p-12 text-center ${
+                draft.contentType === 'TROUBLESHOOTING' ? 'from-purple-600 to-pink-600' :
+                draft.contentType === 'COMPARISON' ? 'from-blue-600 to-cyan-600' :
+                draft.contentType === 'BLOG' ? 'from-orange-600 to-red-600' :
+                'from-blue-600 to-purple-600'
+              }`}>
                 <h1 className="text-4xl font-bold mb-4">
-                  Frequently Asked Questions
+                  {draft.contentType === 'TROUBLESHOOTING' ? 'Troubleshooting Guide' :
+                   draft.contentType === 'COMPARISON' ? 'Product Comparison' :
+                   draft.contentType === 'BLOG' ? 'Blog Article' :
+                   'Frequently Asked Questions'}
                 </h1>
                 <p className="text-xl text-blue-100">
-                  About {draft.brand} in {draft.region}
+                  {draft.contentType === 'TROUBLESHOOTING' ? `Resolving ${draft.brand} Issues` :
+                   draft.contentType === 'COMPARISON' ? `Comparing ${draft.brand} Options` :
+                   draft.contentType === 'BLOG' ? `About ${draft.brand}` :
+                   `About ${draft.brand} in ${draft.region}`}
                 </p>
               </div>
 
