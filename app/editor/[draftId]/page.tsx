@@ -5,7 +5,9 @@ import { useParams } from 'next/navigation';
 import { Puck, Render, Data } from '@measured/puck';
 import '@measured/puck/dist/index.css';
 import { config } from '@/app/puck-config';
-import { Draft } from '@/lib/types';
+import { Draft, TroubleshootingItem, TroubleshootingComponentProps } from '@/lib/types';
+import FactualValidationUI from '@/components/FactualValidationUI';
+import ConversationalAIEditor from '@/components/ConversationalAIEditor';
 
 export default function EditorPage() {
   const params = useParams();
@@ -17,6 +19,8 @@ export default function EditorPage() {
   const [approved, setApproved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [puckData, setPuckData] = useState<Data | null>(null);
+  const [showAIEditor, setShowAIEditor] = useState(false);
+  const [selectedIssue, setSelectedIssue] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadDraft() {
@@ -113,6 +117,36 @@ export default function EditorPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     }
+  };
+
+  const handleAddSolution = (issue: string) => {
+    setSelectedIssue(issue);
+    setShowAIEditor(true);
+  };
+
+  const handleSaveAIGeneratedItem = (item: TroubleshootingItem) => {
+    if (!puckData || draft?.contentType !== 'TROUBLESHOOTING') return;
+
+    const troubleshootingContent = puckData.content[0]?.props as TroubleshootingComponentProps;
+    if (troubleshootingContent) {
+      const updatedContent = {
+        ...troubleshootingContent,
+        items: [...troubleshootingContent.items, item],
+      };
+
+      setPuckData({
+        ...puckData,
+        content: [
+          {
+            ...puckData.content[0],
+            props: updatedContent,
+          },
+        ],
+      });
+    }
+
+    setShowAIEditor(false);
+    setSelectedIssue(null);
   };
 
   if (loading) {
@@ -230,9 +264,55 @@ export default function EditorPage() {
                 </p>
               </div>
 
-              {/* FAQ Content */}
+              {/* Content */}
               <div className="p-8">
-                <Render config={config} data={puckData} />
+                {draft.contentType === 'TROUBLESHOOTING' && puckData ? (
+                  <div>
+                    <Render config={config} data={puckData} />
+                    
+                    {/* Show factual validation UI for items with missing/low confidence */}
+                    {(() => {
+                      const troubleshootingContent = puckData.content[0]?.props as TroubleshootingComponentProps;
+                      if (!troubleshootingContent) return null;
+                      
+                      const itemsNeedingReview = troubleshootingContent.items.filter(
+                        item => item.factualConfidence === 'missing' || item.factualConfidence === 'low'
+                      );
+                      
+                      if (itemsNeedingReview.length === 0) return null;
+                      
+                      return (
+                        <div className="mt-8 border-t border-gray-200 pt-8">
+                          <h3 className="text-xl font-bold text-gray-900 mb-4">
+                            Items Requiring Review
+                          </h3>
+                          <div className="space-y-4">
+                            {itemsNeedingReview.map((item, index) => (
+                              <div key={index} className="border border-gray-200 rounded-lg p-4">
+                                <h4 className="font-semibold text-gray-900 mb-2">{item.issue}</h4>
+                                <FactualValidationUI
+                                  item={item}
+                                  onMarkForReview={() => {
+                                    // Could implement review workflow here
+                                    console.log('Marked for review:', item);
+                                  }}
+                                />
+                                <button
+                                  onClick={() => handleAddSolution(item.issue)}
+                                  className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                  Add Solution with AI
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <Render config={config} data={puckData} />
+                )}
               </div>
 
               {/* Footer */}
@@ -245,6 +325,21 @@ export default function EditorPage() {
           </div>
         )}
       </div>
+
+      {/* Conversational AI Editor Modal */}
+      {showAIEditor && selectedIssue && draft && (
+        <ConversationalAIEditor
+          issue={selectedIssue}
+          brand={draft.brand}
+          vertical={draft.vertical}
+          region={draft.region}
+          onSave={handleSaveAIGeneratedItem}
+          onClose={() => {
+            setShowAIEditor(false);
+            setSelectedIssue(null);
+          }}
+        />
+      )}
     </div>
   );
 }

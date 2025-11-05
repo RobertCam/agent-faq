@@ -20,6 +20,159 @@ interface Step {
   data?: any;
 }
 
+// Helper functions for export
+function generateTroubleshootingHTML(component: any): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${component.title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+    h1 { color: #333; border-bottom: 2px solid #6366f1; padding-bottom: 10px; }
+    h2 { color: #555; margin-top: 30px; }
+    .confidence { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-left: 10px; }
+    .high { background: #dcfce7; color: #166534; }
+    .medium { background: #fef3c7; color: #92400e; }
+    .low { background: #fed7aa; color: #9a3412; }
+    .missing { background: #fee2e2; color: #991b1b; }
+    .item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .steps { background: #f9fafb; padding: 15px; border-radius: 6px; margin: 10px 0; }
+    .sources { margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; }
+    .sources a { color: #2563eb; text-decoration: none; }
+    .sources a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>${component.title}</h1>
+  <p><strong>Category:</strong> ${component.supportCategory}</p>
+  <p><strong>Brand:</strong> ${component.brand}${component.region ? ` | Region: ${component.region}` : ''}</p>
+  
+  ${component.items.map((item: any, index: number) => `
+    <div class="item">
+      <h2>${index + 1}. ${item.issue} <span class="confidence ${item.factualConfidence || 'missing'}">${item.factualConfidence || 'missing'}</span></h2>
+      <p>${item.solution}</p>
+      ${item.steps && item.steps.length > 0 ? `
+        <div class="steps">
+          <strong>Steps to resolve:</strong>
+          <ol>
+            ${item.steps.map((step: string) => `<li>${step}</li>`).join('')}
+          </ol>
+        </div>
+      ` : ''}
+      ${item.sources && item.sources.length > 0 ? `
+        <div class="sources">
+          <strong>Sources:</strong>
+          <ul>
+            ${item.sources.map((source: any) => `
+              <li>
+                ${source.url ? `<a href="${source.url}" target="_blank">${source.title || source.url}</a>` : source.title || 'Source'}
+                ${source.snippet ? `<br><small>${source.snippet}</small>` : ''}
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    </div>
+  `).join('')}
+</body>
+</html>`;
+}
+
+function generateTroubleshootingText(component: any): string {
+  let text = `${component.title}\n`;
+  text += `Category: ${component.supportCategory}\n`;
+  text += `Brand: ${component.brand}${component.region ? ` | Region: ${component.region}` : ''}\n\n`;
+  
+  component.items.forEach((item: any, index: number) => {
+    text += `${index + 1}. ${item.issue} [${item.factualConfidence || 'missing'}]\n`;
+    text += `${item.solution}\n`;
+    if (item.steps && item.steps.length > 0) {
+      text += `Steps:\n`;
+      item.steps.forEach((step: string, stepIndex: number) => {
+        text += `  ${stepIndex + 1}. ${step}\n`;
+      });
+    }
+    if (item.sources && item.sources.length > 0) {
+      text += `Sources:\n`;
+      item.sources.forEach((source: any) => {
+        text += `  - ${source.url || source.title || 'Source'}\n`;
+        if (source.snippet) text += `    ${source.snippet}\n`;
+      });
+    }
+    text += `\n`;
+  });
+  
+  return text;
+}
+
+function generateIssuesRankingHTML(issues: any[]): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ranked Issues from SERPs</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+    h1 { color: #333; border-bottom: 2px solid #f97316; padding-bottom: 10px; }
+    .issue { border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin: 20px 0; background: #fff7ed; }
+    .rank { font-size: 24px; font-weight: bold; color: #f97316; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 5px; }
+    .score { background: #fef3c7; color: #92400e; }
+    .type { background: #dbeafe; color: #1e40af; }
+    .snippet { color: #666; margin: 10px 0; }
+    .reasoning { color: #888; font-size: 12px; margin-top: 10px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>Ranked Issues from SERPs (${issues.length})</h1>
+  
+  ${issues.map((issue: any, index: number) => `
+    <div class="issue">
+      <div class="rank">#${index + 1}</div>
+      <h2>${issue.question}</h2>
+      ${issue.snippet ? `<p class="snippet">${issue.snippet}</p>` : ''}
+      <div>
+        <span class="badge score">Score: ${issue.score}</span>
+        ${issue.issueType ? `<span class="badge type">${issue.issueType}</span>` : ''}
+      </div>
+      <p class="reasoning">Reasoning: ${issue.reasoning}</p>
+      ${issue.link ? `<a href="${issue.link}" target="_blank">View source →</a>` : ''}
+    </div>
+  `).join('')}
+</body>
+</html>`;
+}
+
+function generateIssuesRankingText(issues: any[]): string {
+  let text = `Ranked Issues from SERPs (${issues.length})\n\n`;
+  
+  issues.forEach((issue: any, index: number) => {
+    text += `#${index + 1} - ${issue.question}\n`;
+    text += `Score: ${issue.score}${issue.issueType ? ` | Type: ${issue.issueType}` : ''}\n`;
+    if (issue.snippet) text += `${issue.snippet}\n`;
+    text += `Reasoning: ${issue.reasoning}\n`;
+    if (issue.link) text += `Source: ${issue.link}\n`;
+    text += `\n`;
+  });
+  
+  return text;
+}
+
+function downloadHTML(html: string, filename: string) {
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Home() {
   const [brand, setBrand] = useState('Starbucks');
   const [vertical, setVertical] = useState('Coffee / QSR');
@@ -295,21 +448,67 @@ export default function Home() {
               )}
 
               {(workflowData.rankedIssues && workflowData.rankedIssues.length > 0) && (
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    🔧 Top Ranked Issues ({workflowData.rankedIssues.length})
-                  </h3>
+                <div className="border border-orange-300 rounded-lg p-6 bg-orange-50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      🔧 Ranked Issues from SERPs ({workflowData.rankedIssues.length})
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const html = generateIssuesRankingHTML(workflowData.rankedIssues);
+                          downloadHTML(html, `${brand}-issues-ranking-${Date.now()}.html`);
+                        }}
+                        className="text-orange-600 hover:text-orange-800 font-medium text-sm px-4 py-2 border border-orange-600 rounded-lg hover:bg-orange-50 transition-colors"
+                      >
+                        Export HTML
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = generateIssuesRankingText(workflowData.rankedIssues);
+                          navigator.clipboard.writeText(text);
+                          alert('Copied to clipboard!');
+                        }}
+                        className="text-orange-600 hover:text-orange-800 font-medium text-sm px-4 py-2 border border-orange-600 rounded-lg hover:bg-orange-50 transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
                   <div className="space-y-3">
                     {workflowData.rankedIssues.map((issue: any, index: number) => (
-                      <div key={index} className="p-3 bg-orange-50 rounded flex justify-between items-start">
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">{issue.question}</p>
-                          <p className="text-xs text-gray-500 mt-1">Score: {issue.score} • {issue.reasoning}</p>
-                          {issue.issueType && (
-                            <span className="inline-block mt-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                              {issue.issueType}
-                            </span>
-                          )}
+                      <div key={index} className="p-4 bg-white rounded-lg border border-orange-200">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-lg font-bold text-orange-600">#{index + 1}</span>
+                              <p className="font-semibold text-gray-900">{issue.question}</p>
+                            </div>
+                            {issue.snippet && (
+                              <p className="text-sm text-gray-600 mt-2 mb-2">{issue.snippet}</p>
+                            )}
+                            <div className="flex items-center gap-3 mt-2">
+                              <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-medium">
+                                Score: {issue.score}
+                              </span>
+                              {issue.issueType && (
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                  {issue.issueType}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">Reasoning: {issue.reasoning}</p>
+                            {issue.link && (
+                              <a
+                                href={issue.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:text-blue-800 mt-2 inline-block"
+                              >
+                                View source →
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -377,9 +576,32 @@ export default function Home() {
 
               {workflowData.troubleshootingComponent && (
                 <div className="border border-purple-300 rounded-lg p-6 bg-purple-50">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    ✅ Generated Troubleshooting Article ({workflowData.troubleshootingComponent.items.length} items)
-                  </h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      ✅ Generated Troubleshooting Article ({workflowData.troubleshootingComponent.items.length} items)
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const html = generateTroubleshootingHTML(workflowData.troubleshootingComponent);
+                          downloadHTML(html, `${brand}-troubleshooting-${Date.now()}.html`);
+                        }}
+                        className="text-purple-600 hover:text-purple-800 font-medium text-sm px-4 py-2 border border-purple-600 rounded-lg hover:bg-purple-50 transition-colors"
+                      >
+                        Export HTML
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = generateTroubleshootingText(workflowData.troubleshootingComponent);
+                          navigator.clipboard.writeText(text);
+                          alert('Copied to clipboard!');
+                        }}
+                        className="text-purple-600 hover:text-purple-800 font-medium text-sm px-4 py-2 border border-purple-600 rounded-lg hover:bg-purple-50 transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
                   <div className="bg-white p-4 rounded-lg">
                     <h4 className="text-xl font-bold text-gray-900 mb-2">{workflowData.troubleshootingComponent.title}</h4>
                     <p className="text-sm text-gray-600 mb-2">
