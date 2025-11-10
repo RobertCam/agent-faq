@@ -42,24 +42,40 @@ const openai = new OpenAI({
 export async function expandSeeds(input: ExpandSeedsInput): Promise<{ seeds: string[] }> {
   const { brand, vertical, region } = input;
   
-  // Generate seed variations using templates
-  const templates = [
-    `${brand} ${vertical} ${region}`,
-    `${brand} near me ${region}`,
+  // Generate seed variations - with or without brand
+  const templates: string[] = [];
+  
+  if (brand) {
+    // Brand-specific templates
+    templates.push(
+      `${brand} ${vertical} ${region}`,
+      `${brand} near me ${region}`,
+      `${brand} hours ${region}`,
+      `${brand} menu ${region}`,
+      `${brand} location ${region}`,
+      `where to find ${brand} ${region}`,
+      `${brand} reviews ${region}`,
+      `order from ${brand} ${region}`,
+      `${brand} phone number ${region}`,
+      `${brand} address ${region}`,
+      `how to find ${brand} ${region}`,
+      `${brand} contact ${region}`
+    );
+  }
+  
+  // Generic templates (work with or without brand)
+  templates.push(
     `best ${vertical} ${region}`,
-    `${brand} hours ${region}`,
-    `${brand} menu ${region}`,
     `${vertical} delivery ${region}`,
-    `${brand} location ${region}`,
-    `where to find ${brand} ${region}`,
-    `${brand} reviews ${region}`,
-    `order from ${brand} ${region}`,
-    `${brand} phone number ${region}`,
     `${vertical} near ${region}`,
-    `${brand} address ${region}`,
-    `how to find ${brand} ${region}`,
-    `${brand} contact ${region}`,
-  ];
+    `${vertical} ${region}`,
+    `top ${vertical} ${region}`,
+    `${vertical} services ${region}`,
+    `find ${vertical} ${region}`,
+    `${vertical} options ${region}`,
+    `${vertical} information ${region}`,
+    `about ${vertical} ${region}`
+  );
 
   // Add variations with "in [region]"
   const regionVariations = templates.map(t => t.replace(region, `in ${region}`));
@@ -67,7 +83,7 @@ export async function expandSeeds(input: ExpandSeedsInput): Promise<{ seeds: str
   // Combine and deduplicate
   const allSeeds = Array.from(new Set([...templates, ...regionVariations]));
   
-  console.log(`[expandSeeds] Generated ${allSeeds.length} seed queries`);
+  console.log(`[expandSeeds] Generated ${allSeeds.length} seed queries${brand ? ` for ${brand}` : 'generic'}`);
   
   return { seeds: allSeeds };
 }
@@ -142,11 +158,17 @@ export async function rankQuestions(input: RankQuestionsInput): Promise<{ top: R
     const reasoning: string[] = [];
     
     // Score criteria:
-    // - Non-brand questions are better (avoid duplication)
-    const isBranded = row.question.toLowerCase().includes(brand.toLowerCase());
-    if (!isBranded) {
-      score += 20;
-      reasoning.push('Non-branded question');
+    // - Non-brand questions are better (avoid duplication) - only if brand is provided
+    if (brand) {
+      const isBranded = row.question.toLowerCase().includes(brand.toLowerCase());
+      if (!isBranded) {
+        score += 20;
+        reasoning.push('Non-branded question');
+      }
+    } else {
+      // Without brand, all questions are equally valid
+      score += 10;
+      reasoning.push('Generic question');
     }
     
     // - Local intent ("near me", "in [region]")
@@ -293,11 +315,14 @@ export async function recommendContentType(input: RecommendContentTypeInput): Pr
 export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqComponent: FAQComponentProps }> {
   const { brand, region, questions, customInstructions } = input;
   
-  console.log(`[generateFAQJSON] Generating FAQ for ${questions.length} questions`);
+  console.log(`[generateFAQJSON] Generating FAQ for ${questions.length} questions${brand ? ` for ${brand}` : 'generic'}`);
   
   const questionList = questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
   
-  let prompt = `You are a content writer for ${brand} in ${region}. 
+  const brandContext = brand ? `for ${brand} ` : '';
+  const brandSpecificity = brand ? `specific to ${brand} ` : '';
+  
+  let prompt = `You are a content writer ${brandContext}in ${region}. 
 
 Generate a concise, factual FAQ based on these questions:
 ${questionList}
@@ -305,7 +330,7 @@ ${questionList}
 Requirements:
 - Answer 5-8 of the best questions (prioritize commercial notices and local relevance)
 - Each answer should be 2-3 sentences maximum
-- Be factual, helpful, and specific to ${brand} in ${region}
+- Be factual, helpful, and ${brandSpecificity}relevant to ${region}
 - Tone should be friendly and professional`;
 
   if (customInstructions) {
@@ -549,7 +574,7 @@ Return ONLY a JSON object with this structure:
  * Tool 8: Draft store - Put
  */
 export async function draftStorePut(input: DraftStorePutInput): Promise<{ draftId: string }> {
-  const { brand, vertical, region, contentType, content } = input;
+  const { brand, vertical, region, contentType, content, entityId } = input;
   
   const draftId = `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
@@ -561,12 +586,13 @@ export async function draftStorePut(input: DraftStorePutInput): Promise<{ draftI
     contentType,
     content,
     createdAt: new Date().toISOString(),
+    entityId, // Store entityId if provided
   };
   
   const drafts = getDraftsMap();
   drafts.set(draftId, draft);
   
-  console.log(`[draftStorePut] Stored draft ${draftId} (type: ${contentType})`);
+  console.log(`[draftStorePut] Stored draft ${draftId} (type: ${contentType})${entityId ? ` with entityId: ${entityId}` : ''}`);
   console.log(`[draftStorePut] Total drafts in storage: ${drafts.size}`);
   
   return { draftId };

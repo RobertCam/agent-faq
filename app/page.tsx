@@ -19,7 +19,7 @@ interface Step {
 }
 
 export default function Home() {
-  const [brand, setBrand] = useState('Starbucks');
+  const [brand, setBrand] = useState('');
   const [vertical, setVertical] = useState('Coffee / QSR');
   const [region, setRegion] = useState('Vancouver');
   const [contentType, setContentType] = useState<'FAQ' | 'COMPARISON' | 'BLOG'>('FAQ');
@@ -36,8 +36,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const handleRun = async () => {
-    if (!brand || !vertical || !region) {
-      setError('Please fill in all fields');
+    if (!vertical || !region) {
+      setError('Please fill in vertical and region (brand is optional)');
       return;
     }
 
@@ -53,7 +53,13 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ brand, vertical, region, contentType, customInstructions }),
+        body: JSON.stringify({ 
+          ...(brand && { brand }),
+          vertical, 
+          region, 
+          contentType, 
+          customInstructions 
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to start agent');
@@ -120,17 +126,20 @@ export default function Home() {
           <div className="space-y-6 mb-8">
             <div>
               <label htmlFor="brand" className="block text-sm font-medium text-gray-700 mb-2">
-                Brand Name
+                Brand Name <span className="text-gray-500 font-normal">(Optional)</span>
               </label>
               <input
                 type="text"
                 id="brand"
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
-                placeholder="e.g., Starbucks"
+                placeholder="e.g., Starbucks (leave empty for generic content)"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={loading}
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Leave empty to generate generic content for the category and region
+              </p>
             </div>
 
             <div>

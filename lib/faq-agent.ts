@@ -18,7 +18,7 @@ interface WorkflowData {
  * Orchestrates the MCP tools in sequence
  */
 export async function runFAQAgent(params: {
-  brand: string;
+  brand?: string; // Optional - can generate without brand
   vertical: string;
   region: string;
 }): Promise<{ draftId: string; logs: string[]; workflowData: WorkflowData }> {

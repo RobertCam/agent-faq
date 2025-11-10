@@ -21,13 +21,13 @@ export async function POST(req: NextRequest) {
           const body = await req.json();
           const { brand, vertical, region, contentType, customInstructions } = body;
 
-          if (!brand || !vertical || !region || !contentType) {
-            sendUpdate('error', { message: 'Missing required fields' });
+          if (!vertical || !region || !contentType) {
+            sendUpdate('error', { message: 'Missing required fields: vertical, region, and contentType are required' });
             controller.close();
             return;
           }
 
-        sendUpdate('start', { brand, vertical, region });
+        sendUpdate('start', { brand: brand || undefined, vertical, region });
 
         // Step 1: Expand seeds
         sendUpdate('step', { step: 1, name: 'Expanding seed keywords', status: 'running' });

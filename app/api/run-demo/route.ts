@@ -6,14 +6,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { brand, vertical, region } = body;
 
-    if (!brand || !vertical || !region) {
+    if (!vertical || !region) {
       return NextResponse.json(
-        { error: 'Missing required fields: brand, vertical, region' },
+        { error: 'Missing required fields: vertical and region are required' },
         { status: 400 }
       );
     }
 
-    console.log(`[run-demo] Starting agent for ${brand} / ${vertical} / ${region}`);
+    const brandLabel = brand || 'generic';
+    console.log(`[run-demo] Starting agent for ${brandLabel} / ${vertical} / ${region}`);
 
     const result = await runFAQAgent({ brand, vertical, region });
 
