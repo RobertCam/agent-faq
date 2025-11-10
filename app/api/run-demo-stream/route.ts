@@ -8,6 +8,8 @@ import {
   generateBlogJSON,
   draftStorePut,
   customizeFAQForEntity,
+  customizeComparisonForEntity,
+  customizeBlogForEntity,
 } from '@/lib/mcp-tools';
 import { getFAQEntity, listEntities } from '@/lib/yext-client';
 
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
 
         // Step 0: Fetch Yext entities if credentials provided
         let finalSelectedEntityIds = selectedEntityIds || [];
-        if (yextApiKey && yextAccountId && contentType === 'FAQ') {
+        if (yextApiKey && yextAccountId && ['FAQ', 'COMPARISON', 'BLOG'].includes(contentType)) {
           sendUpdate('step', { step: 0, name: 'Fetching entities from Yext', status: 'running' });
           try {
             const entities = await listEntities('location', 50, yextApiKey, yextAccountId);
@@ -154,12 +156,28 @@ export async function POST(req: NextRequest) {
           sendUpdate('step', { step: 4, name: `Generating ${selectedType} content with AI`, status: 'completed', data: faqResult });
           sendUpdate('data', { faqComponent: faqResult.faqComponent });
         } else if (selectedType === 'COMPARISON') {
-          const comparisonResult = await generateComparisonJSON({ brand, vertical, region: genericContent ? undefined : region, questions: rankedResult.top, customInstructions });
+          const comparisonResult = await generateComparisonJSON({ 
+            brand, 
+            vertical, 
+            region: genericContent ? undefined : region, 
+            questions: rankedResult.top, 
+            customInstructions,
+            genericContent,
+            useTemplate: finalSelectedEntityIds && finalSelectedEntityIds.length > 0,
+          });
           generatedContent = comparisonResult.comparisonComponent;
           sendUpdate('step', { step: 4, name: `Generating ${selectedType} content with AI`, status: 'completed', data: comparisonResult });
           sendUpdate('data', { comparisonComponent: comparisonResult.comparisonComponent });
         } else if (selectedType === 'BLOG') {
-          const blogResult = await generateBlogJSON({ brand, vertical, region: genericContent ? undefined : region, questions: rankedResult.top, customInstructions });
+          const blogResult = await generateBlogJSON({ 
+            brand, 
+            vertical, 
+            region: genericContent ? undefined : region, 
+            questions: rankedResult.top, 
+            customInstructions,
+            genericContent,
+            useTemplate: finalSelectedEntityIds && finalSelectedEntityIds.length > 0,
+          });
           generatedContent = blogResult.blogComponent;
           sendUpdate('step', { step: 4, name: `Generating ${selectedType} content with AI`, status: 'completed', data: blogResult });
           sendUpdate('data', { blogComponent: blogResult.blogComponent });
@@ -167,7 +185,7 @@ export async function POST(req: NextRequest) {
 
         // Step 5: Store draft(s)
         const isTemplate = (generatedContent as any)?.isTemplate || genericContent;
-        if (finalSelectedEntityIds && finalSelectedEntityIds.length > 0 && selectedType === 'FAQ' && isTemplate) {
+        if (finalSelectedEntityIds && finalSelectedEntityIds.length > 0 && ['FAQ', 'COMPARISON', 'BLOG'].includes(selectedType) && isTemplate) {
           // Multi-entity mode: create customized drafts for each entity
           sendUpdate('step', { step: 5, name: `Customizing content for ${finalSelectedEntityIds.length} entities`, status: 'running' });
           
@@ -191,8 +209,17 @@ export async function POST(req: NextRequest) {
                 continue;
               }
               
-              // Customize FAQ for this entity
-              const customizedFAQ = customizeFAQForEntity(generatedContent, entity);
+              // Customize content for this entity based on type
+              let customizedContent;
+              if (selectedType === 'FAQ') {
+                customizedContent = customizeFAQForEntity(generatedContent, entity);
+              } else if (selectedType === 'COMPARISON') {
+                customizedContent = customizeComparisonForEntity(generatedContent, entity);
+              } else if (selectedType === 'BLOG') {
+                customizedContent = customizeBlogForEntity(generatedContent, entity);
+              } else {
+                customizedContent = generatedContent;
+              }
               
               // Store draft for this entity
               const entityDraft = await draftStorePut({
@@ -200,7 +227,7 @@ export async function POST(req: NextRequest) {
                 vertical,
                 region: entity.address?.city || entity.geomodifier || region || 'Generic',
                 contentType: selectedType,
-                content: customizedFAQ,
+                content: customizedContent,
                 entityId,
               });
               

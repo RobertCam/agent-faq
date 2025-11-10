@@ -147,17 +147,21 @@ export interface ContentRecommendation {
 export interface GenerateComparisonInput {
   brand?: string; // Optional
   vertical: string;
-  region: string;
+  region?: string; // Optional - can be generic content
   questions: RankedQuestion[];
   customInstructions?: string;
+  genericContent?: boolean; // Generate generic content with placeholders
+  useTemplate?: boolean; // Use template mode for multi-entity customization
 }
 
 export interface GenerateBlogInput {
   brand?: string; // Optional
   vertical: string;
-  region: string;
+  region?: string; // Optional - can be generic content
   questions: RankedQuestion[];
   customInstructions?: string;
+  genericContent?: boolean; // Generate generic content with placeholders
+  useTemplate?: boolean; // Use template mode for multi-entity customization
 }
 
 // Yext API Types

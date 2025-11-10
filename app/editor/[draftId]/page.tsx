@@ -19,7 +19,20 @@ export default function EditorPage() {
   const [puckData, setPuckData] = useState<Data | null>(null);
   const [showApprovalForm, setShowApprovalForm] = useState(false);
   const [entityId, setEntityId] = useState<string>('');
-  const [fieldId, setFieldId] = useState<string>('c_minigolfMadness_locations_faqSection');
+  const getDefaultFieldId = (contentType?: string) => {
+    switch (contentType) {
+      case 'FAQ':
+        return 'c_minigolfMadness_locations_faqSection';
+      case 'COMPARISON':
+        return 'c_minigolfMadnessProductComparison';
+      case 'BLOG':
+        return 'c_minigolfMandnessBlogs';
+      default:
+        return 'c_minigolfMadness_locations_faqSection';
+    }
+  };
+  
+  const [fieldId, setFieldId] = useState<string>('');
   const [yextApiKey, setYextApiKey] = useState<string>('');
   const [yextAccountId, setYextAccountId] = useState<string>('');
   const [approving, setApproving] = useState(false);
@@ -47,6 +60,9 @@ export default function EditorPage() {
         if (data.draft.entityId) {
           setEntityId(data.draft.entityId);
         }
+        
+        // Set default field ID based on content type
+        setFieldId(getDefaultFieldId(data.draft.contentType));
         
         // Convert to PUCK data format based on content type
         if (data.draft.contentType === 'FAQ') {
@@ -93,30 +109,33 @@ export default function EditorPage() {
   }, [draftId]);
 
   const handleApprove = async () => {
-    // For FAQ content, show form to get entity ID and field ID
-    if (draft?.contentType === 'FAQ') {
+    // Show form for all content types that support Yext
+    if (draft?.contentType && ['FAQ', 'COMPARISON', 'BLOG'].includes(draft.contentType)) {
       setShowApprovalForm(true);
       return;
     }
     
-    // For other content types, approve directly
-    await submitApproval();
+    // For unsupported content types, show error
+    setError('This content type does not support Yext publishing');
   };
 
   const submitApproval = async () => {
-    if (draft?.contentType === 'FAQ') {
-      if (!entityId) {
-        setError('Entity ID is required for FAQ content');
-        return;
-      }
-      if (!yextApiKey) {
-        setError('Yext API Key is required');
-        return;
-      }
-      if (!yextAccountId) {
-        setError('Yext Account ID is required');
-        return;
-      }
+    if (!draft?.contentType || !['FAQ', 'COMPARISON', 'BLOG'].includes(draft.contentType)) {
+      setError('Content type does not support Yext publishing');
+      return;
+    }
+    
+    if (!entityId) {
+      setError('Entity ID is required');
+      return;
+    }
+    if (!yextApiKey) {
+      setError('Yext API Key is required');
+      return;
+    }
+    if (!yextAccountId) {
+      setError('Yext Account ID is required');
+      return;
     }
 
     setApproving(true);
@@ -131,7 +150,7 @@ export default function EditorPage() {
         body: JSON.stringify({ 
           draftId,
           entityId: entityId || draft?.entityId,
-          fieldId: fieldId || 'c_minigolfMadness_locations_faqSection',
+          fieldId: fieldId || getDefaultFieldId(draft?.contentType),
           yextApiKey,
           yextAccountId,
         }),
@@ -179,7 +198,7 @@ export default function EditorPage() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-8 max-w-md">
           <h2 className="text-2xl font-bold text-green-800 mb-4">✅ Published to Yext!</h2>
           <p className="text-green-700 mb-2">
-            The FAQ has been successfully published to Yext Knowledge Graph.
+            The {draft?.contentType || 'content'} has been successfully published to Yext Knowledge Graph.
           </p>
           {entityId && (
             <p className="text-sm text-green-600 mb-6">
@@ -242,7 +261,7 @@ export default function EditorPage() {
       </div>
 
       {/* Approval Form Modal */}
-      {showApprovalForm && draft?.contentType === 'FAQ' && (
+      {showApprovalForm && draft?.contentType && ['FAQ', 'COMPARISON', 'BLOG'].includes(draft.contentType) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">
@@ -308,13 +327,13 @@ export default function EditorPage() {
                 <input
                   id="fieldId"
                   type="text"
-                  value={fieldId}
+                  value={fieldId || getDefaultFieldId(draft?.contentType)}
                   onChange={(e) => setFieldId(e.target.value)}
-                  placeholder="c_minigolfMadness_locations_faqSection"
+                  placeholder={getDefaultFieldId(draft?.contentType)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  The custom field ID where FAQs are stored (default: c_minigolfMadness_locations_faqSection)
+                  The custom field ID where {draft?.contentType === 'FAQ' ? 'FAQs' : draft?.contentType === 'COMPARISON' ? 'product comparisons' : 'blogs'} are stored (default: {getDefaultFieldId(draft?.contentType)})
                 </p>
               </div>
             </div>

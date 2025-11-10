@@ -1,4 +1,4 @@
-import { FAQComponentProps, YextFAQEntity, YextAPIResponse } from './types';
+import { FAQComponentProps, ComparisonComponentProps, BlogComponentProps, YextFAQEntity, YextAPIResponse } from './types';
 
 const YEXT_API_BASE = 'https://api.yextapis.com/v2';
 
@@ -162,6 +162,87 @@ function textToLexicalJson(text: string): any {
 }
 
 /**
+ * Convert blog sections to Lexical editor JSON format
+ * Handles headings, paragraphs, and basic formatting
+ */
+function blogSectionsToLexicalJson(sections: Array<{ heading: string; content: string }>): any {
+  const children: any[] = [];
+  
+  for (const section of sections) {
+    // Add heading (H2)
+    if (section.heading) {
+      children.push({
+        type: "heading",
+        direction: "ltr",
+        format: "",
+        indent: 0,
+        tag: "h2",
+        children: [
+          {
+            type: "text",
+            detail: 0,
+            format: 1, // Bold
+            mode: "normal",
+            style: "",
+            text: section.heading,
+            version: 1
+          }
+        ],
+        version: 1
+      });
+    }
+    
+    // Add content paragraphs
+    if (section.content) {
+      // Split content by double newlines to create multiple paragraphs
+      const paragraphs = section.content.split(/\n\n+/).filter(p => p.trim());
+      for (const paraText of paragraphs) {
+        children.push({
+          type: "paragraph",
+          direction: "ltr",
+          format: "",
+          indent: 0,
+          children: [
+            {
+              type: "text",
+              detail: 0,
+              format: 0,
+              mode: "normal",
+              style: "",
+              text: paraText.trim(),
+              version: 1
+            }
+          ],
+          version: 1
+        });
+      }
+    }
+    
+    // Add spacing paragraph between sections
+    children.push({
+      type: "paragraph",
+      format: "",
+      indent: 0,
+      children: [],
+      version: 1
+    });
+  }
+  
+  return {
+    json: {
+      root: {
+        type: "root",
+        direction: "ltr",
+        format: "",
+        indent: 0,
+        children,
+        version: 1
+      }
+    }
+  };
+}
+
+/**
  * Map FAQComponentProps to Yext FAQ entity format
  * Uses the custom field structure specified by fieldId
  */
@@ -183,6 +264,86 @@ export function mapFAQToYextEntity(
   };
 
   return entity;
+}
+
+/**
+ * Map ComparisonComponentProps to Yext Product Comparison entity format
+ */
+export function mapComparisonToYextEntity(
+  comparisonContent: ComparisonComponentProps,
+  fieldId: string = 'c_minigolfMadnessProductComparison'
+): any {
+  // Convert comparison items to features, pros, and cons
+  const featureList: string[] = [];
+  const pros: string[] = [];
+  const cons: string[] = [];
+  
+  comparisonContent.items.forEach(item => {
+    featureList.push(item.feature);
+    if (item.brandValue && item.competitorValue) {
+      // If brand value is better, it's a pro; if competitor is better, it's a con
+      // Simple heuristic: if brandValue is longer/more detailed, it's likely better
+      if (item.brandValue.length > item.competitorValue.length) {
+        pros.push(`${item.feature}: ${item.brandValue}`);
+      } else {
+        cons.push(`${item.feature}: ${item.competitorValue} (competitor advantage)`);
+      }
+    }
+  });
+  
+  // Create product comparison entry
+  const productComparison = {
+    productName: comparisonContent.brand || 'Product',
+    description: textToLexicalJson(
+      `Comparison of ${comparisonContent.brand || 'our product'} vs ${comparisonContent.competitor || 'competitor'} in ${comparisonContent.category}${comparisonContent.region ? ` (${comparisonContent.region})` : ''}.`
+    ),
+    featureList: featureList.slice(0, 10), // Limit to 10 features
+    pros: pros.slice(0, 5), // Limit to 5 pros
+    cons: cons.slice(0, 5), // Limit to 5 cons
+    rating: textToLexicalJson('Based on feature comparison analysis'),
+    // Note: image, price, and cta are optional and can be added later if needed
+  };
+  
+  return {
+    [fieldId]: [productComparison], // Array format as per Yext structure
+  };
+}
+
+/**
+ * Map BlogComponentProps to Yext Blog entity format
+ */
+export function mapBlogToYextEntity(
+  blogContent: BlogComponentProps,
+  fieldId: string = 'c_minigolfMandnessBlogs'
+): any {
+  // Calculate read time (rough estimate: 200 words per minute)
+  const totalWords = blogContent.sections.reduce((sum, section) => {
+    return sum + (section.content?.split(/\s+/).length || 0);
+  }, 0);
+  const readTime = Math.max(1, Math.ceil(totalWords / 200));
+  
+  // Convert sections to Lexical JSON for bodyContent
+  const bodyContent = blogSectionsToLexicalJson(blogContent.sections);
+  
+  // Create blog entry
+  const blogEntry = {
+    title: blogContent.title,
+    authorName: blogContent.brand || 'Content Team',
+    publishDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+    summary: textToLexicalJson(blogContent.metaDescription),
+    bodyContent: bodyContent,
+    tags: [
+      blogContent.vertical,
+      ...(blogContent.region ? [blogContent.region] : []),
+      ...(blogContent.brand ? [blogContent.brand] : []),
+    ].filter(Boolean),
+    readTime: readTime.toString(),
+    // Note: heroImage and cta are optional and can be added later if needed
+  };
+  
+  return {
+    [fieldId]: [blogEntry], // Array format as per Yext structure
+  };
 }
 
 /**
@@ -291,6 +452,152 @@ export async function updateFAQEntity(
     return data;
   } catch (error) {
     console.error('[yext-client] Error updating FAQ entity:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update a Comparison entity in Yext Knowledge Graph
+ */
+export async function updateComparisonEntity(
+  entityId: string,
+  comparisonContent: ComparisonComponentProps,
+  fieldId: string = 'c_minigolfMadnessProductComparison',
+  apiKey?: string,
+  accountId?: string
+): Promise<YextAPIResponse> {
+  try {
+    const { apiKey: finalApiKey, accountId: finalAccountId } = getYextCredentials(apiKey, accountId);
+    const version = getCurrentVersion();
+
+    // Map our comparison content to Yext format
+    const yextEntity = mapComparisonToYextEntity(comparisonContent, fieldId);
+
+    const url = `${YEXT_API_BASE}/accounts/${finalAccountId}/entities/${entityId}?v=${version}&api_key=${finalApiKey}`;
+
+    console.log(`[yext-client] Updating Comparison entity ${entityId} in account ${finalAccountId}`);
+    console.log(`[yext-client] Comparison items: ${comparisonContent.items.length}`);
+    console.log(`[yext-client] Using field ID: ${fieldId}`);
+
+    // Check if field exists
+    const fieldExists = await checkFieldExists(entityId, fieldId, finalApiKey, finalAccountId);
+    if (!fieldExists) {
+      console.log(`[yext-client] Field ${fieldId} does not exist on entity ${entityId}, will be created on update`);
+    }
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(yextEntity),
+    });
+
+    const responseText = await response.text();
+    let data: YextAPIResponse;
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      throw new Error(`Invalid JSON response from Yext API: ${responseText}`);
+    }
+
+    if (!response.ok) {
+      const errorMessages = data.meta.errors
+        ? data.meta.errors.map(e => e.message).join(', ')
+        : `HTTP ${response.status}: ${responseText}`;
+      
+      const errorMessage = errorMessages.toLowerCase();
+      if (errorMessage.includes('field') && (errorMessage.includes('not exist') || errorMessage.includes('not found'))) {
+        console.warn(`[yext-client] Field ${fieldId} may need to be created in Yext schema first`);
+        throw new Error(`Field ${fieldId} does not exist on entity. Please ensure the field is defined in your Yext schema.`);
+      }
+      
+      throw new Error(`Yext API error: ${errorMessages}`);
+    }
+
+    if (data.meta.errors && data.meta.errors.length > 0) {
+      const errorMessages = data.meta.errors.map(e => e.message).join(', ');
+      throw new Error(`Yext API errors: ${errorMessages}`);
+    }
+
+    console.log(`[yext-client] Successfully updated Comparison entity ${entityId}`);
+    return data;
+  } catch (error) {
+    console.error('[yext-client] Error updating Comparison entity:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update a Blog entity in Yext Knowledge Graph
+ */
+export async function updateBlogEntity(
+  entityId: string,
+  blogContent: BlogComponentProps,
+  fieldId: string = 'c_minigolfMandnessBlogs',
+  apiKey?: string,
+  accountId?: string
+): Promise<YextAPIResponse> {
+  try {
+    const { apiKey: finalApiKey, accountId: finalAccountId } = getYextCredentials(apiKey, accountId);
+    const version = getCurrentVersion();
+
+    // Map our blog content to Yext format
+    const yextEntity = mapBlogToYextEntity(blogContent, fieldId);
+
+    const url = `${YEXT_API_BASE}/accounts/${finalAccountId}/entities/${entityId}?v=${version}&api_key=${finalApiKey}`;
+
+    console.log(`[yext-client] Updating Blog entity ${entityId} in account ${finalAccountId}`);
+    console.log(`[yext-client] Blog sections: ${blogContent.sections.length}`);
+    console.log(`[yext-client] Using field ID: ${fieldId}`);
+
+    // Check if field exists
+    const fieldExists = await checkFieldExists(entityId, fieldId, finalApiKey, finalAccountId);
+    if (!fieldExists) {
+      console.log(`[yext-client] Field ${fieldId} does not exist on entity ${entityId}, will be created on update`);
+    }
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(yextEntity),
+    });
+
+    const responseText = await response.text();
+    let data: YextAPIResponse;
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      throw new Error(`Invalid JSON response from Yext API: ${responseText}`);
+    }
+
+    if (!response.ok) {
+      const errorMessages = data.meta.errors
+        ? data.meta.errors.map(e => e.message).join(', ')
+        : `HTTP ${response.status}: ${responseText}`;
+      
+      const errorMessage = errorMessages.toLowerCase();
+      if (errorMessage.includes('field') && (errorMessage.includes('not exist') || errorMessage.includes('not found'))) {
+        console.warn(`[yext-client] Field ${fieldId} may need to be created in Yext schema first`);
+        throw new Error(`Field ${fieldId} does not exist on entity. Please ensure the field is defined in your Yext schema.`);
+      }
+      
+      throw new Error(`Yext API error: ${errorMessages}`);
+    }
+
+    if (data.meta.errors && data.meta.errors.length > 0) {
+      const errorMessages = data.meta.errors.map(e => e.message).join(', ');
+      throw new Error(`Yext API errors: ${errorMessages}`);
+    }
+
+    console.log(`[yext-client] Successfully updated Blog entity ${entityId}`);
+    return data;
+  } catch (error) {
+    console.error('[yext-client] Error updating Blog entity:', error);
     throw error;
   }
 }

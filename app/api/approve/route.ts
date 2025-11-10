@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { draftStoreGet } from '@/lib/mcp-tools';
-import { DraftStoreGetInput } from '@/lib/types';
-import { updateFAQEntity } from '@/lib/yext-client';
-import { FAQComponentProps } from '@/lib/types';
+import { DraftStoreGetInput, FAQComponentProps, ComparisonComponentProps, BlogComponentProps } from '@/lib/types';
+import { updateFAQEntity, updateComparisonEntity, updateBlogEntity } from '@/lib/yext-client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,12 +19,12 @@ export async function POST(req: NextRequest) {
     const input: DraftStoreGetInput = { draftId };
     const { draft } = await draftStoreGet(input);
 
-    // Only handle FAQ content types for now
-    if (draft.contentType !== 'FAQ') {
+    // Validate content type
+    if (!['FAQ', 'COMPARISON', 'BLOG'].includes(draft.contentType)) {
       return NextResponse.json(
         { 
           success: false,
-          error: `Content type ${draft.contentType} is not supported for Yext integration. Only FAQ is supported.` 
+          error: `Content type ${draft.contentType} is not supported for Yext integration. Supported types: FAQ, COMPARISON, BLOG.` 
         },
         { status: 400 }
       );
@@ -44,32 +43,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate FAQ content structure
-    const faqContent = draft.content as FAQComponentProps;
-    
-    if (!faqContent || !faqContent.items || !Array.isArray(faqContent.items)) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Invalid FAQ content structure' 
-        },
-        { status: 400 }
-      );
-    }
-
-    if (faqContent.items.length === 0) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'FAQ content has no items to publish' 
-        },
-        { status: 400 }
-      );
-    }
-
-    console.log(`[approve] Updating Yext FAQ entity ${targetEntityId} for draft ${draftId}`);
-    console.log(`[approve] FAQ items: ${faqContent.items.length}`);
-
     // Validate Yext credentials
     if (!yextApiKey || !yextAccountId) {
       return NextResponse.json(
@@ -81,15 +54,119 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update FAQ entity in Yext
-    const targetFieldId = fieldId || 'c_minigolfMadness_locations_faqSection';
-    const yextResponse = await updateFAQEntity(
-      targetEntityId, 
-      faqContent, 
-      targetFieldId,
-      yextApiKey,
-      yextAccountId
-    );
+    let yextResponse;
+    let defaultFieldId: string;
+
+    // Handle each content type
+    if (draft.contentType === 'FAQ') {
+      const faqContent = draft.content as FAQComponentProps;
+      
+      if (!faqContent || !faqContent.items || !Array.isArray(faqContent.items)) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Invalid FAQ content structure' 
+          },
+          { status: 400 }
+        );
+      }
+
+      if (faqContent.items.length === 0) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'FAQ content has no items to publish' 
+          },
+          { status: 400 }
+        );
+      }
+
+      defaultFieldId = 'c_minigolfMadness_locations_faqSection';
+      const targetFieldId = fieldId || defaultFieldId;
+      
+      console.log(`[approve] Updating Yext FAQ entity ${targetEntityId} for draft ${draftId}`);
+      console.log(`[approve] FAQ items: ${faqContent.items.length}`);
+      
+      yextResponse = await updateFAQEntity(
+        targetEntityId, 
+        faqContent, 
+        targetFieldId,
+        yextApiKey,
+        yextAccountId
+      );
+    } else if (draft.contentType === 'COMPARISON') {
+      const comparisonContent = draft.content as ComparisonComponentProps;
+      
+      if (!comparisonContent || !comparisonContent.items || !Array.isArray(comparisonContent.items)) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Invalid Comparison content structure' 
+          },
+          { status: 400 }
+        );
+      }
+
+      if (comparisonContent.items.length === 0) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Comparison content has no items to publish' 
+          },
+          { status: 400 }
+        );
+      }
+
+      defaultFieldId = 'c_minigolfMadnessProductComparison';
+      const targetFieldId = fieldId || defaultFieldId;
+      
+      console.log(`[approve] Updating Yext Comparison entity ${targetEntityId} for draft ${draftId}`);
+      console.log(`[approve] Comparison items: ${comparisonContent.items.length}`);
+      
+      yextResponse = await updateComparisonEntity(
+        targetEntityId, 
+        comparisonContent, 
+        targetFieldId,
+        yextApiKey,
+        yextAccountId
+      );
+    } else if (draft.contentType === 'BLOG') {
+      const blogContent = draft.content as BlogComponentProps;
+      
+      if (!blogContent || !blogContent.sections || !Array.isArray(blogContent.sections)) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Invalid Blog content structure' 
+          },
+          { status: 400 }
+        );
+      }
+
+      if (blogContent.sections.length === 0) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Blog content has no sections to publish' 
+          },
+          { status: 400 }
+        );
+      }
+
+      defaultFieldId = 'c_minigolfMandnessBlogs';
+      const targetFieldId = fieldId || defaultFieldId;
+      
+      console.log(`[approve] Updating Yext Blog entity ${targetEntityId} for draft ${draftId}`);
+      console.log(`[approve] Blog sections: ${blogContent.sections.length}`);
+      
+      yextResponse = await updateBlogEntity(
+        targetEntityId, 
+        blogContent, 
+        targetFieldId,
+        yextApiKey,
+        yextAccountId
+      );
+    }
 
     console.log(`[approve] Successfully updated Yext entity ${targetEntityId}`);
 

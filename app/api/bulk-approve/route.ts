@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { draftStoreGet } from '@/lib/mcp-tools';
-import { DraftStoreGetInput } from '@/lib/types';
-import { updateFAQEntity } from '@/lib/yext-client';
-import { FAQComponentProps } from '@/lib/types';
+import { DraftStoreGetInput, FAQComponentProps, ComparisonComponentProps, BlogComponentProps } from '@/lib/types';
+import { updateFAQEntity, updateComparisonEntity, updateBlogEntity } from '@/lib/yext-client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,8 +42,8 @@ export async function POST(req: NextRequest) {
         const input: DraftStoreGetInput = { draftId };
         const { draft } = await draftStoreGet(input);
 
-        // Only handle FAQ content types
-        if (draft.contentType !== 'FAQ') {
+        // Validate content type
+        if (!['FAQ', 'COMPARISON', 'BLOG'].includes(draft.contentType)) {
           results.push({
             draftId,
             entityId: draft.entityId || 'unknown',
@@ -68,41 +67,120 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // Validate FAQ content structure
-        const faqContent = draft.content as FAQComponentProps;
-        
-        if (!faqContent || !faqContent.items || !Array.isArray(faqContent.items)) {
-          results.push({
-            draftId,
-            entityId: targetEntityId,
-            success: false,
-            error: 'Invalid FAQ content structure',
-            entityName: targetEntityId,
-          });
-          continue;
+        // Get default field ID based on content type
+        // Each content type uses its own default field ID (fieldId parameter is ignored for bulk operations)
+        let targetFieldId: string;
+        if (draft.contentType === 'FAQ') {
+          targetFieldId = 'c_minigolfMadness_locations_faqSection';
+        } else if (draft.contentType === 'COMPARISON') {
+          targetFieldId = 'c_minigolfMadnessProductComparison';
+        } else {
+          targetFieldId = 'c_minigolfMandnessBlogs';
         }
 
-        if (faqContent.items.length === 0) {
-          results.push({
-            draftId,
-            entityId: targetEntityId,
-            success: false,
-            error: 'FAQ content has no items',
-            entityName: targetEntityId,
-          });
-          continue;
+        let yextResponse;
+
+        // Handle each content type
+        if (draft.contentType === 'FAQ') {
+          const faqContent = draft.content as FAQComponentProps;
+          
+          if (!faqContent || !faqContent.items || !Array.isArray(faqContent.items)) {
+            results.push({
+              draftId,
+              entityId: targetEntityId,
+              success: false,
+              error: 'Invalid FAQ content structure',
+              entityName: targetEntityId,
+            });
+            continue;
+          }
+
+          if (faqContent.items.length === 0) {
+            results.push({
+              draftId,
+              entityId: targetEntityId,
+              success: false,
+              error: 'FAQ content has no items',
+              entityName: targetEntityId,
+            });
+            continue;
+          }
+
+          console.log(`[bulk-approve] Updating Yext FAQ entity ${targetEntityId} for draft ${draftId}`);
+          yextResponse = await updateFAQEntity(
+            targetEntityId, 
+            faqContent, 
+            targetFieldId,
+            yextApiKey,
+            yextAccountId
+          );
+        } else if (draft.contentType === 'COMPARISON') {
+          const comparisonContent = draft.content as ComparisonComponentProps;
+          
+          if (!comparisonContent || !comparisonContent.items || !Array.isArray(comparisonContent.items)) {
+            results.push({
+              draftId,
+              entityId: targetEntityId,
+              success: false,
+              error: 'Invalid Comparison content structure',
+              entityName: targetEntityId,
+            });
+            continue;
+          }
+
+          if (comparisonContent.items.length === 0) {
+            results.push({
+              draftId,
+              entityId: targetEntityId,
+              success: false,
+              error: 'Comparison content has no items',
+              entityName: targetEntityId,
+            });
+            continue;
+          }
+
+          console.log(`[bulk-approve] Updating Yext Comparison entity ${targetEntityId} for draft ${draftId}`);
+          yextResponse = await updateComparisonEntity(
+            targetEntityId, 
+            comparisonContent, 
+            targetFieldId,
+            yextApiKey,
+            yextAccountId
+          );
+        } else if (draft.contentType === 'BLOG') {
+          const blogContent = draft.content as BlogComponentProps;
+          
+          if (!blogContent || !blogContent.sections || !Array.isArray(blogContent.sections)) {
+            results.push({
+              draftId,
+              entityId: targetEntityId,
+              success: false,
+              error: 'Invalid Blog content structure',
+              entityName: targetEntityId,
+            });
+            continue;
+          }
+
+          if (blogContent.sections.length === 0) {
+            results.push({
+              draftId,
+              entityId: targetEntityId,
+              success: false,
+              error: 'Blog content has no sections',
+              entityName: targetEntityId,
+            });
+            continue;
+          }
+
+          console.log(`[bulk-approve] Updating Yext Blog entity ${targetEntityId} for draft ${draftId}`);
+          yextResponse = await updateBlogEntity(
+            targetEntityId, 
+            blogContent, 
+            targetFieldId,
+            yextApiKey,
+            yextAccountId
+          );
         }
-
-        console.log(`[bulk-approve] Updating Yext FAQ entity ${targetEntityId} for draft ${draftId}`);
-
-        // Update FAQ entity in Yext
-        const yextResponse = await updateFAQEntity(
-          targetEntityId, 
-          faqContent, 
-          targetFieldId,
-          yextApiKey,
-          yextAccountId
-        );
 
         results.push({
           draftId,

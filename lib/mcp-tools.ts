@@ -469,13 +469,39 @@ Requirements:
  * Tool 6: Generate Comparison JSON
  */
 export async function generateComparisonJSON(input: GenerateComparisonInput): Promise<{ comparisonComponent: ComparisonComponentProps }> {
-  const { brand, vertical, region, questions, customInstructions } = input;
+  const { brand, vertical, region, questions, customInstructions, genericContent, useTemplate } = input;
   
-  console.log(`[generateComparisonJSON] Generating comparison for ${questions.length} questions`);
+  const mode = useTemplate ? 'template' : genericContent ? 'generic' : 'specific';
+  console.log(`[generateComparisonJSON] Generating comparison (${mode} mode) for ${questions.length} questions`);
   
   const questionList = questions.slice(0, 5).map((q, i) => `${i + 1}. ${q.question}`).join('\n');
+  const brandContext = brand ? `for ${brand} ` : '';
   
-  let prompt = `You are a content writer for ${brand} in ${vertical}. 
+  let prompt = '';
+  
+  if (useTemplate || genericContent) {
+    // Template/Generic mode - use placeholders
+    prompt = `You are a content writer ${brandContext}creating a product/service comparison that will be customized for multiple locations.
+
+Analyze these questions and generate a comparison template:
+${questionList}
+
+Requirements:
+- Create a comparison table format
+- Identify the main competitor or alternative
+- Compare 5-7 key factors (price, features, quality, convenience, etc.)
+- Each comparison should have: Feature name, Your brand's value, Competitor's value
+- Use placeholders for location-specific information: {{entityName}}, {{city}}, {{region}}, {{state}}, {{address}}
+- Be factual and ${brandContext}applicable to any location
+- Values should work across different cities and regions
+
+Example placeholders:
+- "Visit {{entityName}} at {{address}} in {{city}}"
+- "We're located in {{city}}, {{state}}"
+- "Contact {{entityName}} in {{city}} for more information"`;
+  } else {
+    // Specific mode - region-specific content
+    prompt = `You are a content writer ${brandContext}in ${region}. 
 
 Analyze these questions and generate a product/service comparison:
 ${questionList}
@@ -486,22 +512,24 @@ Requirements:
 - Compare 5-7 key factors (price, features, quality, convenience, etc.)
 - Each comparison should have: Feature name, Your brand's value, Competitor's value
 - Be factual and specific
-
-Return ONLY a JSON object with this exact structure:
-{
-  "competitor": "Competitor name or alternative",
-  "items": [
-    {
-      "feature": "Feature name",
-      "brandValue": "Value for your brand",
-      "competitorValue": "Value for competitor"
-    }
-  ]
-}`;
+- Relevant to ${region}`;
+  }
 
   if (customInstructions) {
     prompt += `\n\nAdditional instructions:\n${customInstructions}`;
   }
+  
+  prompt += `\n\nReturn ONLY a JSON object with this exact structure:
+{
+  "competitor": "Competitor name or alternative",
+  "items": [
+    {
+      "feature": "Feature name (may include placeholders like {{city}} or {{entityName}})",
+      "brandValue": "Value for your brand (may include placeholders)",
+      "competitorValue": "Value for competitor"
+    }
+  ]
+}`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -530,12 +558,17 @@ Return ONLY a JSON object with this exact structure:
       brand,
       competitor: generated.competitor,
       category: vertical,
-      region,
+      region: region || 'Generic',
       items,
       schemaOrg,
     };
     
-    console.log(`[generateComparisonJSON] Generated comparison with ${items.length} features`);
+    // Mark as template if using template mode
+    if (useTemplate || genericContent) {
+      (comparisonComponent as any).isTemplate = true;
+    }
+    
+    console.log(`[generateComparisonJSON] Generated comparison with ${items.length} features (${mode} mode)`);
     
     return { comparisonComponent };
   } catch (error) {
@@ -548,12 +581,15 @@ Return ONLY a JSON object with this exact structure:
  * Tool 7: Generate Blog JSON
  */
 export async function generateBlogJSON(input: GenerateBlogInput): Promise<{ blogComponent: BlogComponentProps }> {
-  const { brand, vertical, region, questions, customInstructions } = input;
+  const { brand, vertical, region, questions, customInstructions, genericContent, useTemplate } = input;
   
-  console.log(`[generateBlogJSON] Generating blog for ${questions.length} questions`);
+  const mode = useTemplate ? 'template' : genericContent ? 'generic' : 'specific';
+  console.log(`[generateBlogJSON] Generating blog (${mode} mode) for ${questions.length} questions`);
+  
+  const brandContext = brand ? `for ${brand} ` : '';
   
   // Generate article title from questions
-  const titlePrompt = `Generate a compelling blog post title based on these questions about ${brand} in ${vertical}:
+  const titlePrompt = `Generate a compelling blog post title based on these questions ${brandContext}in ${vertical}${region ? ` (${region})` : ''}:
 ${questions.slice(0, 5).map(q => q.question).join('\n')}`;
   
   try {
@@ -563,10 +599,39 @@ ${questions.slice(0, 5).map(q => q.question).join('\n')}`;
       temperature: 0.8,
     });
     
-    const title = titleCompletion.choices[0].message.content || `${brand} in ${region}: Everything You Need to Know`;
+    const defaultTitle = brand 
+      ? `${brand} in ${vertical}: Everything You Need to Know`
+      : `${vertical}: Everything You Need to Know`;
+    const title = titleCompletion.choices[0].message.content || defaultTitle;
     
     // Generate article structure
-    let blogPrompt = `You are a content writer. Create a detailed blog article about ${brand} in ${vertical} (${region}).
+    let blogPrompt = '';
+    
+    if (useTemplate || genericContent) {
+      // Template/Generic mode - use placeholders
+      blogPrompt = `You are a content writer ${brandContext}creating a blog article that will be customized for multiple locations.
+
+Title: ${title}
+
+Questions to address:
+${questions.slice(0, 8).map((q, i) => `${i + 1}. ${q.question}`).join('\n')}
+
+Requirements:
+- Create 4-6 sections with headings and content
+- Each section should have a heading (H2) and 2-3 paragraphs
+- Use placeholders for location-specific information: {{entityName}}, {{city}}, {{region}}, {{state}}, {{address}}
+- Write in a friendly, informative tone
+- Include meta description (150 characters)
+- Content should be ${brandContext}applicable to any location
+- Sections should work across different cities and regions
+
+Example placeholders:
+- "Visit {{entityName}} at {{address}} in {{city}}"
+- "We're located in {{city}}, {{state}}"
+- "Contact {{entityName}} in {{city}} for more information"`;
+    } else {
+      // Specific mode - region-specific content
+      blogPrompt = `You are a content writer ${brandContext}in ${region}. 
 
 Title: ${title}
 
@@ -578,22 +643,24 @@ Requirements:
 - Each section should have a heading (H2) and 2-3 paragraphs
 - Write in a friendly, informative tone
 - Include meta description (150 characters)
-
-Return ONLY a JSON object with this structure:
-{
-  "metaDescription": "SEO meta description",
-  "sections": [
-    {
-      "heading": "Section heading",
-      "content": "Section content (2-3 paragraphs)",
-      "order": 1
+- Relevant to ${region}`;
     }
-  ]
-}`;
 
     if (customInstructions) {
       blogPrompt += `\n\nAdditional instructions:\n${customInstructions}`;
     }
+    
+    blogPrompt += `\n\nReturn ONLY a JSON object with this structure:
+{
+  "metaDescription": "SEO meta description (may include placeholders like {{city}} or {{entityName}})",
+  "sections": [
+    {
+      "heading": "Section heading (may include placeholders)",
+      "content": "Section content (2-3 paragraphs, may include placeholders like {{city}} or {{entityName}})",
+      "order": 1
+    }
+  ]
+}`;
     
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -627,13 +694,18 @@ Return ONLY a JSON object with this structure:
       title,
       brand,
       vertical,
-      region,
+      region: region || 'Generic',
       metaDescription: generated.metaDescription || title,
       sections,
       schemaOrg,
     };
     
-    console.log(`[generateBlogJSON] Generated blog with ${sections.length} sections`);
+    // Mark as template if using template mode
+    if (useTemplate || genericContent) {
+      (blogComponent as any).isTemplate = true;
+    }
+    
+    console.log(`[generateBlogJSON] Generated blog with ${sections.length} sections (${mode} mode)`);
     
     return { blogComponent };
   } catch (error) {
@@ -643,12 +715,9 @@ Return ONLY a JSON object with this structure:
 }
 
 /**
- * Customize FAQ content for a specific entity by replacing placeholders
+ * Helper function to extract entity information for placeholder replacement
  */
-export function customizeFAQForEntity(
-  faqContent: FAQComponentProps,
-  entity: any
-): FAQComponentProps {
+function getEntityPlaceholders(entity: any) {
   const entityName = entity.name || 'our location';
   const city = entity.address?.city || entity.geomodifier || 'your area';
   const region = entity.address?.region || '';
@@ -657,22 +726,36 @@ export function customizeFAQForEntity(
     ? `${entity.address.line1 || ''}${entity.address.line2 ? `, ${entity.address.line2}` : ''}, ${city}${region ? `, ${region}` : ''}${entity.address.postalCode ? ` ${entity.address.postalCode}` : ''}`.trim()
     : city;
   const phone = entity.localPhone || entity.mainPhone || '';
+  
+  return { entityName, city, region, state, address, phone };
+}
+
+/**
+ * Replace placeholders in a string
+ */
+function replacePlaceholders(text: string, placeholders: ReturnType<typeof getEntityPlaceholders>): string {
+  return text
+    .replace(/\{\{entityName\}\}/g, placeholders.entityName)
+    .replace(/\{\{city\}\}/g, placeholders.city)
+    .replace(/\{\{region\}\}/g, placeholders.region)
+    .replace(/\{\{state\}\}/g, placeholders.state)
+    .replace(/\{\{address\}\}/g, placeholders.address)
+    .replace(/\{\{phone\}\}/g, placeholders.phone);
+}
+
+/**
+ * Customize FAQ content for a specific entity by replacing placeholders
+ */
+export function customizeFAQForEntity(
+  faqContent: FAQComponentProps,
+  entity: any
+): FAQComponentProps {
+  const placeholders = getEntityPlaceholders(entity);
 
   // Replace placeholders in FAQ items
   const customizedItems = faqContent.items.map(item => ({
-    question: item.question
-      .replace(/\{\{entityName\}\}/g, entityName)
-      .replace(/\{\{city\}\}/g, city)
-      .replace(/\{\{region\}\}/g, region)
-      .replace(/\{\{state\}\}/g, state)
-      .replace(/\{\{address\}\}/g, address),
-    answer: item.answer
-      .replace(/\{\{entityName\}\}/g, entityName)
-      .replace(/\{\{city\}\}/g, city)
-      .replace(/\{\{region\}\}/g, region)
-      .replace(/\{\{state\}\}/g, state)
-      .replace(/\{\{address\}\}/g, address)
-      .replace(/\{\{phone\}\}/g, phone),
+    question: replacePlaceholders(item.question, placeholders),
+    answer: replacePlaceholders(item.answer, placeholders),
   }));
 
   // Update schema.org
@@ -691,9 +774,62 @@ export function customizeFAQForEntity(
 
   return {
     brand: faqContent.brand,
-    region: city,
+    region: placeholders.city,
     items: customizedItems,
     schemaOrg,
+  };
+}
+
+/**
+ * Customize Comparison content for a specific entity by replacing placeholders
+ */
+export function customizeComparisonForEntity(
+  comparisonContent: ComparisonComponentProps,
+  entity: any
+): ComparisonComponentProps {
+  const placeholders = getEntityPlaceholders(entity);
+
+  // Replace placeholders in comparison items
+  const customizedItems = comparisonContent.items.map(item => ({
+    feature: replacePlaceholders(item.feature, placeholders),
+    brandValue: replacePlaceholders(item.brandValue, placeholders),
+    competitorValue: item.competitorValue ? replacePlaceholders(item.competitorValue, placeholders) : undefined,
+  }));
+
+  return {
+    brand: comparisonContent.brand,
+    competitor: comparisonContent.competitor,
+    category: comparisonContent.category,
+    region: placeholders.city,
+    items: customizedItems,
+    schemaOrg: comparisonContent.schemaOrg,
+  };
+}
+
+/**
+ * Customize Blog content for a specific entity by replacing placeholders
+ */
+export function customizeBlogForEntity(
+  blogContent: BlogComponentProps,
+  entity: any
+): BlogComponentProps {
+  const placeholders = getEntityPlaceholders(entity);
+
+  // Replace placeholders in blog sections
+  const customizedSections = blogContent.sections.map(section => ({
+    heading: replacePlaceholders(section.heading, placeholders),
+    content: replacePlaceholders(section.content, placeholders),
+    order: section.order,
+  }));
+
+  return {
+    title: replacePlaceholders(blogContent.title, placeholders),
+    brand: blogContent.brand,
+    vertical: blogContent.vertical,
+    region: placeholders.city,
+    metaDescription: replacePlaceholders(blogContent.metaDescription, placeholders),
+    sections: customizedSections,
+    schemaOrg: blogContent.schemaOrg,
   };
 }
 

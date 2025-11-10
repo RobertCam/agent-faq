@@ -690,13 +690,13 @@ export default function Home() {
                         if (data.success) {
                           const { succeeded, failed } = data.summary;
                           if (failed === 0) {
-                            alert(`✅ Successfully published ${succeeded} FAQs to Yext!`);
+                            alert(`✅ Successfully published ${succeeded} items to Yext!`);
                           } else {
                             const failedEntities = data.results
                               .filter((r: any) => !r.success)
                               .map((r: any) => `${r.entityName || r.entityId}: ${r.error}`)
                               .join('\n');
-                            alert(`⚠️ Published ${succeeded} FAQs. ${failed} failed:\n${failedEntities}`);
+                            alert(`⚠️ Published ${succeeded} items. ${failed} failed:\n${failedEntities}`);
                           }
                         } else {
                           alert(`❌ Error: ${data.error}`);
