@@ -7,7 +7,7 @@ import { FAQComponentProps } from '@/lib/types';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { draftId, entityId, fieldId } = body;
+    const { draftId, entityId, fieldId, yextApiKey, yextAccountId } = body;
 
     if (!draftId) {
       return NextResponse.json(
@@ -70,9 +70,26 @@ export async function POST(req: NextRequest) {
     console.log(`[approve] Updating Yext FAQ entity ${targetEntityId} for draft ${draftId}`);
     console.log(`[approve] FAQ items: ${faqContent.items.length}`);
 
+    // Validate Yext credentials
+    if (!yextApiKey || !yextAccountId) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Yext API Key and Account ID are required' 
+        },
+        { status: 400 }
+      );
+    }
+
     // Update FAQ entity in Yext
     const targetFieldId = fieldId || 'c_minigolfMadness_locations_faqSection';
-    const yextResponse = await updateFAQEntity(targetEntityId, faqContent, targetFieldId);
+    const yextResponse = await updateFAQEntity(
+      targetEntityId, 
+      faqContent, 
+      targetFieldId,
+      yextApiKey,
+      yextAccountId
+    );
 
     console.log(`[approve] Successfully updated Yext entity ${targetEntityId}`);
 

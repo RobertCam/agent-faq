@@ -7,20 +7,20 @@ const YEXT_API_BASE = 'https://api.yextapis.com/v2';
  */
 
 /**
- * Get Yext API credentials from environment variables
+ * Get Yext API credentials from parameters or environment variables (fallback)
  */
-function getYextCredentials() {
-  const apiKey = process.env.YEXT_API_KEY;
-  const accountId = process.env.YEXT_ACCOUNT_ID;
+function getYextCredentials(apiKey?: string, accountId?: string) {
+  const finalApiKey = apiKey || process.env.YEXT_API_KEY;
+  const finalAccountId = accountId || process.env.YEXT_ACCOUNT_ID;
 
-  if (!apiKey) {
-    throw new Error('YEXT_API_KEY environment variable is not set');
+  if (!finalApiKey) {
+    throw new Error('Yext API Key is required. Please provide it in the request or set YEXT_API_KEY environment variable.');
   }
-  if (!accountId) {
-    throw new Error('YEXT_ACCOUNT_ID environment variable is not set');
+  if (!finalAccountId) {
+    throw new Error('Yext Account ID is required. Please provide it in the request or set YEXT_ACCOUNT_ID environment variable.');
   }
 
-  return { apiKey, accountId };
+  return { apiKey: finalApiKey, accountId: finalAccountId };
 }
 
 /**
@@ -37,12 +37,17 @@ function getCurrentVersion(): string {
 /**
  * List entities from Yext
  */
-export async function listEntities(entityType?: string, limit: number = 50): Promise<any[]> {
+export async function listEntities(
+  entityType?: string, 
+  limit: number = 50,
+  apiKey?: string,
+  accountId?: string
+): Promise<any[]> {
   try {
-    const { apiKey, accountId } = getYextCredentials();
+    const { apiKey: finalApiKey, accountId: finalAccountId } = getYextCredentials(apiKey, accountId);
     const version = getCurrentVersion();
 
-    let url = `${YEXT_API_BASE}/accounts/${accountId}/entities?v=${version}&api_key=${apiKey}&limit=${limit}`;
+    let url = `${YEXT_API_BASE}/accounts/${finalAccountId}/entities?v=${version}&api_key=${finalApiKey}&limit=${limit}`;
     if (entityType) {
       url += `&entityTypes=${entityType}`;
     }
@@ -80,12 +85,16 @@ export async function listEntities(entityType?: string, limit: number = 50): Pro
 /**
  * Fetch an existing FAQ entity from Yext
  */
-export async function getFAQEntity(entityId: string): Promise<YextFAQEntity | null> {
+export async function getFAQEntity(
+  entityId: string,
+  apiKey?: string,
+  accountId?: string
+): Promise<YextFAQEntity | null> {
   try {
-    const { apiKey, accountId } = getYextCredentials();
+    const { apiKey: finalApiKey, accountId: finalAccountId } = getYextCredentials(apiKey, accountId);
     const version = getCurrentVersion();
 
-    const url = `${YEXT_API_BASE}/accounts/${accountId}/entities/${entityId}?v=${version}&api_key=${apiKey}`;
+    const url = `${YEXT_API_BASE}/accounts/${finalAccountId}/entities/${entityId}?v=${version}&api_key=${finalApiKey}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -182,18 +191,20 @@ export function mapFAQToYextEntity(
 export async function updateFAQEntity(
   entityId: string,
   faqContent: FAQComponentProps,
-  fieldId: string = 'c_minigolfMadness_locations_faqSection'
+  fieldId: string = 'c_minigolfMadness_locations_faqSection',
+  apiKey?: string,
+  accountId?: string
 ): Promise<YextAPIResponse> {
   try {
-    const { apiKey, accountId } = getYextCredentials();
+    const { apiKey: finalApiKey, accountId: finalAccountId } = getYextCredentials(apiKey, accountId);
     const version = getCurrentVersion();
 
     // Map our FAQ content to Yext format
     const yextEntity = mapFAQToYextEntity(faqContent, fieldId);
 
-    const url = `${YEXT_API_BASE}/accounts/${accountId}/entities/${entityId}?v=${version}&api_key=${apiKey}`;
+    const url = `${YEXT_API_BASE}/accounts/${finalAccountId}/entities/${entityId}?v=${version}&api_key=${finalApiKey}`;
 
-    console.log(`[yext-client] Updating FAQ entity ${entityId} in account ${accountId}`);
+    console.log(`[yext-client] Updating FAQ entity ${entityId} in account ${finalAccountId}`);
     console.log(`[yext-client] FAQ items count: ${faqContent.items.length}`);
     console.log(`[yext-client] Using field ID: ${fieldId}`);
 

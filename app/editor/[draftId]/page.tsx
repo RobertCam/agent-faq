@@ -20,6 +20,8 @@ export default function EditorPage() {
   const [showApprovalForm, setShowApprovalForm] = useState(false);
   const [entityId, setEntityId] = useState<string>('');
   const [fieldId, setFieldId] = useState<string>('c_minigolfMadness_locations_faqSection');
+  const [yextApiKey, setYextApiKey] = useState<string>('');
+  const [yextAccountId, setYextAccountId] = useState<string>('');
   const [approving, setApproving] = useState(false);
 
   useEffect(() => {
@@ -102,9 +104,19 @@ export default function EditorPage() {
   };
 
   const submitApproval = async () => {
-    if (draft?.contentType === 'FAQ' && !entityId) {
-      setError('Entity ID is required for FAQ content');
-      return;
+    if (draft?.contentType === 'FAQ') {
+      if (!entityId) {
+        setError('Entity ID is required for FAQ content');
+        return;
+      }
+      if (!yextApiKey) {
+        setError('Yext API Key is required');
+        return;
+      }
+      if (!yextAccountId) {
+        setError('Yext Account ID is required');
+        return;
+      }
     }
 
     setApproving(true);
@@ -120,6 +132,8 @@ export default function EditorPage() {
           draftId,
           entityId: entityId || draft?.entityId,
           fieldId: fieldId || 'c_minigolfMadness_locations_faqSection',
+          yextApiKey,
+          yextAccountId,
         }),
       });
 
@@ -129,6 +143,9 @@ export default function EditorPage() {
         setApproved(true);
         setIsEditing(false);
         setShowApprovalForm(false);
+        // Clear credentials from state for security
+        setYextApiKey('');
+        setYextAccountId('');
         console.log('Approved content:', draft?.content);
       } else {
         throw new Error(data.error || 'Failed to approve draft');
@@ -234,6 +251,40 @@ export default function EditorPage() {
             
             <div className="space-y-4 mb-6">
               <div>
+                <label htmlFor="yextApiKey" className="block text-sm font-medium text-gray-700 mb-2">
+                  Yext API Key <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="yextApiKey"
+                  type="password"
+                  value={yextApiKey}
+                  onChange={(e) => setYextApiKey(e.target.value)}
+                  placeholder="Enter your Yext API key"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Your Yext API key for authentication
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="yextAccountId" className="block text-sm font-medium text-gray-700 mb-2">
+                  Yext Account ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="yextAccountId"
+                  type="text"
+                  value={yextAccountId}
+                  onChange={(e) => setYextAccountId(e.target.value)}
+                  placeholder="Enter your Yext account ID"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Your Yext account ID
+                </p>
+              </div>
+
+              <div>
                 <label htmlFor="entityId" className="block text-sm font-medium text-gray-700 mb-2">
                   Entity ID <span className="text-red-500">*</span>
                 </label>
@@ -286,7 +337,7 @@ export default function EditorPage() {
               </button>
               <button
                 onClick={submitApproval}
-                disabled={approving || !entityId}
+                disabled={approving || !entityId || !yextApiKey || !yextAccountId}
                 className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {approving ? 'Publishing...' : 'Publish to Yext'}
