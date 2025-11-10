@@ -166,6 +166,25 @@ export async function POST(req: NextRequest) {
         yextApiKey,
         yextAccountId
       );
+    } else {
+      // This shouldn't happen due to validation above, but satisfies TypeScript
+      return NextResponse.json(
+        { 
+          success: false,
+          error: `Unsupported content type: ${draft.contentType}` 
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!yextResponse) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Failed to update Yext entity: No response received' 
+        },
+        { status: 500 }
+      );
     }
 
     console.log(`[approve] Successfully updated Yext entity ${targetEntityId}`);
