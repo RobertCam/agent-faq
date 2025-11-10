@@ -33,13 +33,32 @@ export default function Home() {
     faqComponent: null,
   });
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftIds, setDraftIds] = useState<string[]>([]);
+  const [entityDrafts, setEntityDrafts] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  // Yext integration state
+  const [yextApiKey, setYextApiKey] = useState('');
+  const [yextAccountId, setYextAccountId] = useState('');
+  const [yextFieldId, setYextFieldId] = useState('c_minigolfMadness_locations_faqSection');
+  const [genericContent, setGenericContent] = useState(false);
+  const [entities, setEntities] = useState<any[]>([]);
+  const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
+  const [showEntitySelection, setShowEntitySelection] = useState(false);
+  const [fetchingEntities, setFetchingEntities] = useState(false);
 
   const handleRun = async () => {
-    if (!vertical || !region) {
-      setError('Please fill in vertical and region (brand is optional)');
+    if (!vertical) {
+      setError('Please fill in vertical (region is optional if using generic content)');
       return;
     }
+
+    if (!genericContent && !region) {
+      setError('Please fill in region or enable generic content mode');
+      return;
+    }
+
+    // Note: Entities will be fetched automatically during the workflow if credentials are provided
 
     setLoading(true);
     setError(null);
@@ -56,9 +75,16 @@ export default function Home() {
         body: JSON.stringify({ 
           ...(brand && { brand }),
           vertical, 
-          region, 
+          ...(region && !genericContent && { region }),
           contentType, 
-          customInstructions 
+          customInstructions,
+          genericContent,
+          ...(yextApiKey && yextAccountId && {
+            yextApiKey,
+            yextAccountId,
+            yextFieldId,
+            selectedEntityIds: selectedEntities.size > 0 ? Array.from(selectedEntities) : undefined,
+          }),
         }),
       });
 
@@ -69,16 +95,70 @@ export default function Home() {
 
       if (!reader) throw new Error('No response body');
 
+      let buffer = '';
+
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        
+        if (value) {
+          buffer += decoder.decode(value, { stream: !done });
+        }
+        
+        if (done) {
+          // Process remaining buffer when stream ends
+          if (buffer.trim()) {
+            const lines = buffer.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.slice(6).trim();
+                  if (!jsonStr) continue;
+                  const data = JSON.parse(jsonStr);
+                  // Process data (same logic as below)
+                  if (data.type === 'step') {
+                    setSteps((prev) => {
+                      const existing = prev.filter((s) => s.step !== data.data.step);
+                      return [...existing, data.data];
+                    });
+                  } else if (data.type === 'data') {
+                    if (data.data.yextEntities) {
+                      setEntities(data.data.yextEntities);
+                      setShowEntitySelection(true);
+                    }
+                    if (data.data.autoSelectedEntities) {
+                      setSelectedEntities(new Set(data.data.autoSelectedEntities));
+                    }
+                    setWorkflowData((prev) => ({ ...prev, ...data.data }));
+                  } else if (data.type === 'complete') {
+                    if (data.data.multiEntity) {
+                      setDraftIds(data.data.draftIds || []);
+                      setEntityDrafts(data.data.entityDrafts || []);
+                    } else {
+                      setDraftId(data.data.draftId);
+                    }
+                  } else if (data.type === 'error') {
+                    throw new Error(data.data.message);
+                  }
+                } catch (parseError) {
+                  console.error('[handleRun] JSON parse error in final buffer:', parseError);
+                }
+              }
+            }
+          }
+          break;
+        }
+        
+        const lines = buffer.split('\n');
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.slice(6));
+            try {
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr) continue; // Skip empty lines
+              
+              const data = JSON.parse(jsonStr);
 
             if (data.type === 'step') {
               setSteps((prev) => {
@@ -86,11 +166,31 @@ export default function Home() {
                 return [...existing, data.data];
               });
             } else if (data.type === 'data') {
+              // Handle Yext entities from stream
+              if (data.data.yextEntities) {
+                setEntities(data.data.yextEntities);
+                setShowEntitySelection(true);
+              }
+              // Handle auto-selected entities
+              if (data.data.autoSelectedEntities) {
+                setSelectedEntities(new Set(data.data.autoSelectedEntities));
+              }
               setWorkflowData((prev) => ({ ...prev, ...data.data }));
             } else if (data.type === 'complete') {
-              setDraftId(data.data.draftId);
+              if (data.data.multiEntity) {
+                setDraftIds(data.data.draftIds || []);
+                setEntityDrafts(data.data.entityDrafts || []);
+              } else {
+                setDraftId(data.data.draftId);
+              }
             } else if (data.type === 'error') {
               throw new Error(data.data.message);
+            }
+            } catch (parseError) {
+              // Log JSON parse errors but don't break the entire workflow
+              console.error('[handleRun] JSON parse error:', parseError);
+              console.error('[handleRun] Problematic line:', line.substring(0, 200));
+              // Continue processing other lines
             }
           }
         }
@@ -159,7 +259,7 @@ export default function Home() {
 
             <div>
               <label htmlFor="region" className="block text-sm font-medium text-gray-700 mb-2">
-                Region
+                Region <span className="text-gray-500 font-normal">(Optional if generic content)</span>
               </label>
               <input
                 type="text"
@@ -168,9 +268,166 @@ export default function Home() {
                 onChange={(e) => setRegion(e.target.value)}
                 placeholder="e.g., Vancouver"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={loading || genericContent}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Leave empty if using generic content mode
+              </p>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="genericContent"
+                checked={genericContent}
+                onChange={(e) => setGenericContent(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 disabled={loading}
               />
+              <label htmlFor="genericContent" className="ml-2 block text-sm text-gray-700">
+                Generate Generic Content (not region-specific)
+              </label>
             </div>
+            <p className="text-xs text-gray-500 -mt-2 mb-4">
+              Generic content can be customized per entity and works across all locations
+            </p>
+
+            {/* Yext Integration Section */}
+            <div className="border-t border-gray-200 pt-6 mt-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Yext Integration (Optional)</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Connect to Yext to select entities and automatically publish content
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="yextApiKey" className="block text-sm font-medium text-gray-700 mb-2">
+                    Yext API Key
+                  </label>
+                  <input
+                    type="password"
+                    id="yextApiKey"
+                    value={yextApiKey}
+                    onChange={(e) => setYextApiKey(e.target.value)}
+                    placeholder="Enter your Yext API key"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={loading}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="yextAccountId" className="block text-sm font-medium text-gray-700 mb-2">
+                    Yext Account ID
+                  </label>
+                  <input
+                    type="text"
+                    id="yextAccountId"
+                    value={yextAccountId}
+                    onChange={(e) => setYextAccountId(e.target.value)}
+                    placeholder="Enter your Yext account ID"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={loading}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="yextFieldId" className="block text-sm font-medium text-gray-700 mb-2">
+                    FAQ Field ID
+                  </label>
+                  <input
+                    type="text"
+                    id="yextFieldId"
+                    value={yextFieldId}
+                    onChange={(e) => setYextFieldId(e.target.value)}
+                    placeholder="c_minigolfMadness_locations_faqSection"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={loading}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    The custom field ID where FAQs are stored in your Yext entities
+                  </p>
+                </div>
+
+                <p className="text-xs text-gray-500 mt-2">
+                  Entities will be automatically fetched when you start the workflow
+                </p>
+              </div>
+            </div>
+
+            {/* Entity Selection UI */}
+            {showEntitySelection && entities.length > 0 && (
+              <div className="border-t border-gray-200 pt-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Select Entities ({selectedEntities.size} of {entities.length} selected)
+                  </h3>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedEntities.size === entities.length) {
+                          setSelectedEntities(new Set());
+                        } else {
+                          setSelectedEntities(new Set(entities.map((e: any) => e.id || e.meta?.id)));
+                        }
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      {selectedEntities.size === entities.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-4 space-y-2">
+                  {entities.map((entity: any) => {
+                    const entityId = entity.id || entity.meta?.id;
+                    const entityName = entity.name || 'Unnamed Entity';
+                    const entityCity = entity.address?.city || entity.geomodifier || 'Unknown';
+                    const entityRegion = entity.address?.region || '';
+                    const isSelected = selectedEntities.has(entityId);
+                    
+                    return (
+                      <label
+                        key={entityId}
+                        className={`flex items-center p-3 rounded-lg border cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-blue-50 border-blue-300'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedEntities);
+                            if (e.target.checked) {
+                              newSelected.add(entityId);
+                            } else {
+                              newSelected.delete(entityId);
+                            }
+                            setSelectedEntities(newSelected);
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3 flex-1">
+                          <div className="font-medium text-gray-900">{entityName}</div>
+                          <div className="text-sm text-gray-500">
+                            {entityCity}{entityRegion ? `, ${entityRegion}` : ''}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                
+                {selectedEntities.size > 0 && (
+                  <p className="mt-3 text-sm text-gray-600">
+                    {selectedEntities.size} entity{selectedEntities.size !== 1 ? 'ies' : ''} selected. 
+                    Content will be customized for each entity.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <label htmlFor="contentType" className="block text-sm font-medium text-gray-700 mb-2">
@@ -371,6 +628,92 @@ export default function Home() {
               >
                 Open draft in PUCK editor →
               </a>
+            </div>
+          )}
+
+          {entityDrafts.length > 0 && (
+            <div className="mt-6 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+              <h3 className="text-lg font-semibold text-blue-900 mb-4">
+                ✅ Generated {entityDrafts.length} Customized Drafts
+              </h3>
+              <p className="text-blue-800 text-sm mb-4">
+                Content has been customized for each selected entity. Review and approve individually or publish all at once.
+              </p>
+              
+              <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                {entityDrafts.map((entityDraft: any, index: number) => (
+                  <div key={index} className="bg-white p-3 rounded-lg border border-blue-200 flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{entityDraft.entityName || entityDraft.entityId}</p>
+                      <p className="text-xs text-gray-500">Entity ID: {entityDraft.entityId}</p>
+                    </div>
+                    <a
+                      href={`/editor/${entityDraft.draftId}`}
+                      className="ml-4 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      Review →
+                    </a>
+                  </div>
+                ))}
+              </div>
+
+              {yextApiKey && yextAccountId && (
+                <div className="mt-4 pt-4 border-t border-blue-300">
+                  <button
+                    onClick={async (e) => {
+                      if (!yextFieldId) {
+                        alert('❌ Please enter a Field ID');
+                        return;
+                      }
+                      
+                      const button = e.currentTarget;
+                      const originalText = button.textContent;
+                      button.disabled = true;
+                      button.textContent = 'Publishing...';
+                      
+                      try {
+                        const response = await fetch('/api/bulk-approve', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            draftIds: entityDrafts.map((ed: any) => ed.draftId),
+                            fieldId: yextFieldId,
+                            yextApiKey,
+                            yextAccountId,
+                          }),
+                        });
+
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                          const { succeeded, failed } = data.summary;
+                          if (failed === 0) {
+                            alert(`✅ Successfully published ${succeeded} FAQs to Yext!`);
+                          } else {
+                            const failedEntities = data.results
+                              .filter((r: any) => !r.success)
+                              .map((r: any) => `${r.entityName || r.entityId}: ${r.error}`)
+                              .join('\n');
+                            alert(`⚠️ Published ${succeeded} FAQs. ${failed} failed:\n${failedEntities}`);
+                          }
+                        } else {
+                          alert(`❌ Error: ${data.error}`);
+                        }
+                      } catch (err) {
+                        alert(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                      } finally {
+                        button.disabled = false;
+                        if (originalText) button.textContent = originalText;
+                      }
+                    }}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Publish All to Yext ({entityDrafts.length} entities)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

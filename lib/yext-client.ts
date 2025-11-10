@@ -186,7 +186,43 @@ export function mapFAQToYextEntity(
 }
 
 /**
+ * Check if a field exists on an entity
+ */
+async function checkFieldExists(
+  entityId: string,
+  fieldId: string,
+  apiKey: string,
+  accountId: string
+): Promise<boolean> {
+  try {
+    const version = getCurrentVersion();
+    const url = `${YEXT_API_BASE}/accounts/${accountId}/entities/${entityId}?v=${version}&api_key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data: YextAPIResponse<any> = await response.json();
+    const entity = data.response;
+    
+    // Check if the field exists on the entity
+    return entity && fieldId in entity;
+  } catch (error) {
+    console.error('[yext-client] Error checking field existence:', error);
+    return false;
+  }
+}
+
+/**
  * Update an FAQ entity in Yext Knowledge Graph
+ * If the field doesn't exist, it will be created automatically by Yext API
  */
 export async function updateFAQEntity(
   entityId: string,
@@ -207,6 +243,12 @@ export async function updateFAQEntity(
     console.log(`[yext-client] Updating FAQ entity ${entityId} in account ${finalAccountId}`);
     console.log(`[yext-client] FAQ items count: ${faqContent.items.length}`);
     console.log(`[yext-client] Using field ID: ${fieldId}`);
+
+    // Check if field exists (optional - Yext API will create it if it doesn't exist)
+    const fieldExists = await checkFieldExists(entityId, fieldId, finalApiKey, finalAccountId);
+    if (!fieldExists) {
+      console.log(`[yext-client] Field ${fieldId} does not exist on entity ${entityId}, will be created on update`);
+    }
 
     const response = await fetch(url, {
       method: 'PUT',
@@ -229,6 +271,14 @@ export async function updateFAQEntity(
       const errorMessages = data.meta.errors
         ? data.meta.errors.map(e => e.message).join(', ')
         : `HTTP ${response.status}: ${responseText}`;
+      
+      // Check if error is about field not existing - Yext should auto-create, but handle gracefully
+      const errorMessage = errorMessages.toLowerCase();
+      if (errorMessage.includes('field') && (errorMessage.includes('not exist') || errorMessage.includes('not found'))) {
+        console.warn(`[yext-client] Field ${fieldId} may need to be created in Yext schema first`);
+        throw new Error(`Field ${fieldId} does not exist on entity. Please ensure the field is defined in your Yext schema, or the field will be created automatically if your account allows custom field creation.`);
+      }
+      
       throw new Error(`Yext API error: ${errorMessages}`);
     }
 

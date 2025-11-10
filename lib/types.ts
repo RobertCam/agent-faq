@@ -92,7 +92,7 @@ export interface RankedQuestion extends PAARow {
 export interface ExpandSeedsInput {
   brand?: string; // Optional - can generate seeds with just vertical and region
   vertical: string;
-  region: string;
+  region?: string; // Optional - can be undefined for generic content
 }
 
 export interface FetchPAAInput {
@@ -108,9 +108,11 @@ export interface RankQuestionsInput {
 
 export interface GenerateFAQInput {
   brand?: string; // Optional - FAQ can be generated without brand
-  region: string;
+  region?: string; // Optional - can be generic content
   questions: RankedQuestion[];
   customInstructions?: string;
+  genericContent?: boolean; // Generate generic content with placeholders
+  useTemplate?: boolean; // Use template mode for multi-entity customization
 }
 
 export interface DraftStorePutInput {

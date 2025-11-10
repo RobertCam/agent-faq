@@ -4,11 +4,21 @@ import { listEntities } from '@/lib/yext-client';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { entityType, limit } = body;
+    const { entityType, limit, yextApiKey, yextAccountId } = body;
+
+    if (!yextApiKey || !yextAccountId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Yext API Key and Account ID are required',
+        },
+        { status: 400 }
+      );
+    }
 
     console.log(`[list-yext-entities] Listing entities${entityType ? ` of type ${entityType}` : ''}`);
 
-    const entities = await listEntities(entityType, limit || 50);
+    const entities = await listEntities(entityType, limit || 50, yextApiKey, yextAccountId);
 
     // Filter for FAQ entities and show their structure
     const faqEntities = entities.filter((e: any) => 
@@ -24,14 +34,12 @@ export async function POST(req: NextRequest) {
         id: e.meta?.id || e.meta?.uid,
         entityType: e.meta?.entityType,
         name: e.name,
-        // Show first few fields to understand structure
-        sampleFields: Object.keys(e).slice(0, 10),
+        address: e.address,
+        geomodifier: e.geomodifier,
+        meta: e.meta,
+        // Include full entity for customization
+        fullEntity: e,
       })),
-      // Show full structure of first FAQ entity if found
-      sampleFAQEntity: faqEntities.length > 0 ? faqEntities[0] : (entities.length > 0 ? entities[0] : null),
-      sampleFAQEntityStructure: faqEntities.length > 0 
-        ? JSON.stringify(faqEntities[0], null, 2)
-        : (entities.length > 0 ? JSON.stringify(entities[0], null, 2) : null),
     });
   } catch (error) {
     console.error('[list-yext-entities] Error:', error);

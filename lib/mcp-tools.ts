@@ -21,6 +21,7 @@ import {
   GenerateComparisonInput,
   GenerateBlogInput,
 } from './types';
+import { getFAQEntity } from './yext-client';
 
 // In-memory draft storage
 // Use globalThis to persist across hot reloads in dev mode
@@ -42,48 +43,87 @@ const openai = new OpenAI({
 export async function expandSeeds(input: ExpandSeedsInput): Promise<{ seeds: string[] }> {
   const { brand, vertical, region } = input;
   
-  // Generate seed variations - with or without brand
+  // Generate seed variations - with or without brand and region
   const templates: string[] = [];
   
-  if (brand) {
-    // Brand-specific templates
+  if (region) {
+    // Region-specific templates
+    if (brand) {
+      // Brand-specific templates with region
+      templates.push(
+        `${brand} ${vertical} ${region}`,
+        `${brand} near me ${region}`,
+        `${brand} hours ${region}`,
+        `${brand} menu ${region}`,
+        `${brand} location ${region}`,
+        `where to find ${brand} ${region}`,
+        `${brand} reviews ${region}`,
+        `order from ${brand} ${region}`,
+        `${brand} phone number ${region}`,
+        `${brand} address ${region}`,
+        `how to find ${brand} ${region}`,
+        `${brand} contact ${region}`
+      );
+    }
+    
+    // Generic templates with region
     templates.push(
-      `${brand} ${vertical} ${region}`,
-      `${brand} near me ${region}`,
-      `${brand} hours ${region}`,
-      `${brand} menu ${region}`,
-      `${brand} location ${region}`,
-      `where to find ${brand} ${region}`,
-      `${brand} reviews ${region}`,
-      `order from ${brand} ${region}`,
-      `${brand} phone number ${region}`,
-      `${brand} address ${region}`,
-      `how to find ${brand} ${region}`,
-      `${brand} contact ${region}`
+      `best ${vertical} ${region}`,
+      `${vertical} delivery ${region}`,
+      `${vertical} near ${region}`,
+      `${vertical} ${region}`,
+      `top ${vertical} ${region}`,
+      `${vertical} services ${region}`,
+      `find ${vertical} ${region}`,
+      `${vertical} options ${region}`,
+      `${vertical} information ${region}`,
+      `about ${vertical} ${region}`
+    );
+
+    // Add variations with "in [region]"
+    const regionVariations = templates.map(t => t.replace(region, `in ${region}`));
+    templates.push(...regionVariations);
+  } else {
+    // Generic content mode - no region-specific seeds
+    if (brand) {
+      templates.push(
+        `${brand} ${vertical}`,
+        `${brand} near me`,
+        `${brand} hours`,
+        `${brand} menu`,
+        `${brand} location`,
+        `where to find ${brand}`,
+        `${brand} reviews`,
+        `order from ${brand}`,
+        `${brand} phone number`,
+        `${brand} address`,
+        `how to find ${brand}`,
+        `${brand} contact`
+      );
+    }
+    
+    templates.push(
+      `best ${vertical}`,
+      `${vertical} delivery`,
+      `${vertical} near me`,
+      `${vertical}`,
+      `top ${vertical}`,
+      `${vertical} services`,
+      `find ${vertical}`,
+      `${vertical} options`,
+      `${vertical} information`,
+      `about ${vertical}`,
+      `what is ${vertical}`,
+      `${vertical} guide`,
+      `${vertical} tips`,
+      `${vertical} help`
     );
   }
   
-  // Generic templates (work with or without brand)
-  templates.push(
-    `best ${vertical} ${region}`,
-    `${vertical} delivery ${region}`,
-    `${vertical} near ${region}`,
-    `${vertical} ${region}`,
-    `top ${vertical} ${region}`,
-    `${vertical} services ${region}`,
-    `find ${vertical} ${region}`,
-    `${vertical} options ${region}`,
-    `${vertical} information ${region}`,
-    `about ${vertical} ${region}`
-  );
-
-  // Add variations with "in [region]"
-  const regionVariations = templates.map(t => t.replace(region, `in ${region}`));
-  
   // Combine and deduplicate
-  const allSeeds = Array.from(new Set([...templates, ...regionVariations]));
+  const allSeeds = Array.from(new Set(templates));
   
-  console.log(`[expandSeeds] Generated ${allSeeds.length} seed queries${brand ? ` for ${brand}` : 'generic'}`);
+  console.log(`[expandSeeds] Generated ${allSeeds.length} seed queries${brand ? ` for ${brand}` : 'generic'}${region ? ` in ${region}` : ' (generic mode)'}`);
   
   return { seeds: allSeeds };
 }
@@ -313,16 +353,42 @@ export async function recommendContentType(input: RecommendContentTypeInput): Pr
  * Tool 5: Generate FAQ JSON using OpenAI
  */
 export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqComponent: FAQComponentProps }> {
-  const { brand, region, questions, customInstructions } = input;
+  const { brand, region, questions, customInstructions, genericContent, useTemplate } = input;
   
-  console.log(`[generateFAQJSON] Generating FAQ for ${questions.length} questions${brand ? ` for ${brand}` : 'generic'}`);
+  const mode = useTemplate ? 'template' : genericContent ? 'generic' : 'specific';
+  console.log(`[generateFAQJSON] Generating FAQ (${mode} mode) for ${questions.length} questions${brand ? ` for ${brand}` : 'generic'}`);
   
-  const questionList = questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
+  const questionList = questions.length > 0 
+    ? questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n')
+    : 'Common questions about this business type';
   
   const brandContext = brand ? `for ${brand} ` : '';
   const brandSpecificity = brand ? `specific to ${brand} ` : '';
   
-  let prompt = `You are a content writer ${brandContext}in ${region}. 
+  let prompt = '';
+  
+  if (useTemplate || genericContent) {
+    // Template/Generic mode - use placeholders
+    prompt = `You are a content writer ${brandContext}creating FAQ content that will be customized for multiple locations.
+
+Generate a concise, factual FAQ template based on these questions:
+${questionList}
+
+Requirements:
+- Answer 5-8 of the best questions (prioritize commercial intent and general relevance)
+- Each answer should be 2-3 sentences maximum
+- Use placeholders for location-specific information: {{entityName}}, {{city}}, {{region}}, {{state}}, {{address}}
+- Be factual, helpful, and ${brandSpecificity}applicable to any location
+- Tone should be friendly and professional
+- Answers should work across different cities and regions
+
+Example placeholders:
+- "Visit {{entityName}} at {{address}} in {{city}}"
+- "We're located in {{city}}, {{state}}"
+- "Contact {{entityName}} in {{city}} for more information"`;
+  } else {
+    // Specific mode - region-specific content
+    prompt = `You are a content writer ${brandContext}in ${region}. 
 
 Generate a concise, factual FAQ based on these questions:
 ${questionList}
@@ -332,6 +398,7 @@ Requirements:
 - Each answer should be 2-3 sentences maximum
 - Be factual, helpful, and ${brandSpecificity}relevant to ${region}
 - Tone should be friendly and professional`;
+  }
 
   if (customInstructions) {
     prompt += `\n\nAdditional instructions:\n${customInstructions}`;
@@ -342,7 +409,7 @@ Requirements:
   "items": [
     {
       "question": "The question text",
-      "answer": "The answer text"
+      "answer": "The answer text (may include placeholders like {{city}} or {{entityName}})"
     }
   ]
 }`;
@@ -379,12 +446,17 @@ Requirements:
     
     const faqComponent: FAQComponentProps = {
       brand,
-      region,
+      region: region || 'Generic',
       items,
       schemaOrg,
     };
     
-    console.log(`[generateFAQJSON] Generated FAQ with ${items.length} items`);
+    // Mark as template if using template mode
+    if (useTemplate || genericContent) {
+      (faqComponent as any).isTemplate = true;
+    }
+    
+    console.log(`[generateFAQJSON] Generated FAQ with ${items.length} items (${mode} mode)`);
     
     return { faqComponent };
   } catch (error) {
@@ -568,6 +640,61 @@ Return ONLY a JSON object with this structure:
     console.error('[generateBlogJSON] Error:', error);
     throw error;
   }
+}
+
+/**
+ * Customize FAQ content for a specific entity by replacing placeholders
+ */
+export function customizeFAQForEntity(
+  faqContent: FAQComponentProps,
+  entity: any
+): FAQComponentProps {
+  const entityName = entity.name || 'our location';
+  const city = entity.address?.city || entity.geomodifier || 'your area';
+  const region = entity.address?.region || '';
+  const state = entity.address?.region || '';
+  const address = entity.address 
+    ? `${entity.address.line1 || ''}${entity.address.line2 ? `, ${entity.address.line2}` : ''}, ${city}${region ? `, ${region}` : ''}${entity.address.postalCode ? ` ${entity.address.postalCode}` : ''}`.trim()
+    : city;
+  const phone = entity.localPhone || entity.mainPhone || '';
+
+  // Replace placeholders in FAQ items
+  const customizedItems = faqContent.items.map(item => ({
+    question: item.question
+      .replace(/\{\{entityName\}\}/g, entityName)
+      .replace(/\{\{city\}\}/g, city)
+      .replace(/\{\{region\}\}/g, region)
+      .replace(/\{\{state\}\}/g, state)
+      .replace(/\{\{address\}\}/g, address),
+    answer: item.answer
+      .replace(/\{\{entityName\}\}/g, entityName)
+      .replace(/\{\{city\}\}/g, city)
+      .replace(/\{\{region\}\}/g, region)
+      .replace(/\{\{state\}\}/g, state)
+      .replace(/\{\{address\}\}/g, address)
+      .replace(/\{\{phone\}\}/g, phone),
+  }));
+
+  // Update schema.org
+  const schemaOrg: SchemaOrgFAQ = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: customizedItems.map(item => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  };
+
+  return {
+    brand: faqContent.brand,
+    region: city,
+    items: customizedItems,
+    schemaOrg,
+  };
 }
 
 /**
