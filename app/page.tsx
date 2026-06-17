@@ -42,6 +42,7 @@ export default function Home() {
   const [yextAccountId, setYextAccountId] = useState('');
   const [yextFieldId, setYextFieldId] = useState('c_minigolfMadness_locations_faqSection');
   const [genericContent, setGenericContent] = useState(false);
+  const [testMode, setTestMode] = useState(false);
   const [entities, setEntities] = useState<any[]>([]);
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [showEntitySelection, setShowEntitySelection] = useState(false);
@@ -79,6 +80,7 @@ export default function Home() {
           contentType, 
           customInstructions,
           genericContent,
+          testMode,
           ...(yextApiKey && yextAccountId && {
             yextApiKey,
             yextAccountId,
@@ -290,6 +292,23 @@ export default function Home() {
             </div>
             <p className="text-xs text-gray-500 -mt-2 mb-4">
               Generic content can be customized per entity and works across all locations
+            </p>
+
+            <div className="flex items-center mb-4">
+              <input
+                type="checkbox"
+                id="testMode"
+                checked={testMode}
+                onChange={(e) => setTestMode(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                disabled={loading}
+              />
+              <label htmlFor="testMode" className="ml-2 block text-sm text-gray-700">
+                Test Mode (Use mock data to save API costs)
+              </label>
+            </div>
+            <p className="text-xs text-gray-500 -mt-2 mb-4">
+              Test mode uses mock PAA data instead of SerpAPI to avoid consuming your monthly quota
             </p>
 
             {/* Yext Integration Section */}

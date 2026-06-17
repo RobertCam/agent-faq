@@ -9,6 +9,11 @@ import {
   generateBlogJSON,
   draftStorePut,
   draftStoreGet,
+  yextListEntities,
+  yextGetEntity,
+  yextUpdateEntity,
+  yextCheckField,
+  yextGetFieldSchema,
 } from '@/lib/mcp-tools';
 import {
   ExpandSeedsInput,
@@ -20,6 +25,11 @@ import {
   GenerateBlogInput,
   DraftStorePutInput,
   DraftStoreGetInput,
+  YextListEntitiesInput,
+  YextGetEntityInput,
+  YextUpdateEntityInput,
+  YextCheckFieldInput,
+  YextGetFieldSchemaInput,
 } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
@@ -80,6 +90,36 @@ export async function POST(req: NextRequest) {
       case 'draft_store.get': {
         const input = body.args as DraftStoreGetInput;
         const result = await draftStoreGet(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'yext_list_entities': {
+        const input = body.args as YextListEntitiesInput;
+        const result = await yextListEntities(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'yext_get_entity': {
+        const input = body.args as YextGetEntityInput;
+        const result = await yextGetEntity(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'yext_update_entity': {
+        const input = body.args as YextUpdateEntityInput;
+        const result = await yextUpdateEntity(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'yext_check_field': {
+        const input = body.args as YextCheckFieldInput;
+        const result = await yextCheckField(input);
+        return NextResponse.json({ result });
+      }
+
+      case 'yext_get_field_schema': {
+        const input = body.args as YextGetFieldSchemaInput;
+        const result = await yextGetFieldSchema(input);
         return NextResponse.json({ result });
       }
 

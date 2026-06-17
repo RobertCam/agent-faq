@@ -10,8 +10,9 @@ import {
   customizeFAQForEntity,
   customizeComparisonForEntity,
   customizeBlogForEntity,
+  yextListEntities,
+  yextGetEntity,
 } from '@/lib/mcp-tools';
-import { getFAQEntity, listEntities } from '@/lib/yext-client';
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
             yextAccountId,
             selectedEntityIds,
             yextFieldId,
+            testMode,
           } = body;
 
           if (!vertical || !contentType) {
@@ -67,33 +69,26 @@ export async function POST(req: NextRequest) {
           genericContent: genericContent || false,
         });
 
-        // Step 0: Fetch Yext entities if credentials provided
+        // Step 0: Fetch Yext entities using MCP tool if credentials provided
         let finalSelectedEntityIds = selectedEntityIds || [];
         if (yextApiKey && yextAccountId && ['FAQ', 'COMPARISON', 'BLOG'].includes(contentType)) {
-          sendUpdate('step', { step: 0, name: 'Fetching entities from Yext', status: 'running' });
+          sendUpdate('step', { step: 0, name: 'Fetching entities from Yext (MCP)', status: 'running' });
           try {
-            const entities = await listEntities('location', 50, yextApiKey, yextAccountId);
-            const formattedEntities = entities.map((e: any) => ({
-              id: e.meta?.id || e.meta?.uid,
-              entityType: e.meta?.entityType,
-              name: e.name || 'Unnamed Entity',
-              address: e.address ? {
-                line1: e.address.line1,
-                line2: e.address.line2,
-                city: e.address.city,
-                region: e.address.region,
-                postalCode: e.address.postalCode,
-              } : undefined,
-              geomodifier: e.geomodifier,
-              // Store minimal meta info only
-              meta: {
-                id: e.meta?.id,
-                uid: e.meta?.uid,
-                entityType: e.meta?.entityType,
-              },
+            const entitiesResult = await yextListEntities({
+              entityType: 'location',
+              limit: 50,
+              yextApiKey,
+              yextAccountId,
+            });
+            
+            const formattedEntities = entitiesResult.entities.map((e: any) => ({
+              id: e.id,
+              entityType: e.entityType,
+              name: e.name,
+              address: e.address,
             }));
             
-            sendUpdate('step', { step: 0, name: 'Fetching entities from Yext', status: 'completed', data: { entities: formattedEntities } });
+            sendUpdate('step', { step: 0, name: 'Fetching entities from Yext (MCP)', status: 'completed', data: { entities: formattedEntities, total: entitiesResult.total } });
             sendUpdate('data', { yextEntities: formattedEntities });
             
             // If no entities were pre-selected, use all fetched entities
@@ -106,7 +101,7 @@ export async function POST(req: NextRequest) {
             }
           } catch (error) {
             console.error('[run-demo-stream] Error fetching entities:', error);
-            sendUpdate('step', { step: 0, name: 'Fetching entities from Yext', status: 'completed', data: { error: error instanceof Error ? error.message : 'Failed to fetch entities' } });
+            sendUpdate('step', { step: 0, name: 'Fetching entities from Yext (MCP)', status: 'completed', data: { error: error instanceof Error ? error.message : 'Failed to fetch entities' } });
             // Continue without entities if fetch fails
           }
         }
@@ -126,7 +121,8 @@ export async function POST(req: NextRequest) {
         const paaResult = await fetchPAA({ 
           seeds: seedsResult.seeds, 
           location: genericContent ? undefined : region, 
-          hl: 'en' 
+          hl: 'en',
+          testMode: testMode || false,
         });
         sendUpdate('step', { step: 2, name: 'Fetching People Also Ask', status: 'completed', data: paaResult });
         sendUpdate('data', { paaRows: paaResult.rows });
@@ -201,13 +197,19 @@ export async function POST(req: NextRequest) {
             });
             
             try {
-              // Fetch entity details
-              const entity = await getFAQEntity(entityId, yextApiKey, yextAccountId);
+              // Fetch entity details using MCP tool
+              const entityResult = await yextGetEntity({
+                entityId,
+                yextApiKey,
+                yextAccountId,
+              });
               
-              if (!entity) {
+              if (!entityResult || !entityResult.entity) {
                 console.warn(`[run-demo-stream] Entity ${entityId} not found, skipping`);
                 continue;
               }
+              
+              const entity = entityResult.entity;
               
               // Customize content for this entity based on type
               let customizedContent;

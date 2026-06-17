@@ -99,6 +99,7 @@ export interface FetchPAAInput {
   seeds: string[];
   location?: string;
   hl?: string;
+  testMode?: boolean; // Use mock data instead of SerpAPI
 }
 
 export interface RankQuestionsInput {
@@ -113,6 +114,7 @@ export interface GenerateFAQInput {
   customInstructions?: string;
   genericContent?: boolean; // Generate generic content with placeholders
   useTemplate?: boolean; // Use template mode for multi-entity customization
+  entityData?: any; // Optional entity data to inform prompts with context
 }
 
 export interface DraftStorePutInput {
@@ -152,6 +154,7 @@ export interface GenerateComparisonInput {
   customInstructions?: string;
   genericContent?: boolean; // Generate generic content with placeholders
   useTemplate?: boolean; // Use template mode for multi-entity customization
+  entityData?: any; // Optional entity data to inform prompts with context
 }
 
 export interface GenerateBlogInput {
@@ -162,6 +165,7 @@ export interface GenerateBlogInput {
   customInstructions?: string;
   genericContent?: boolean; // Generate generic content with placeholders
   useTemplate?: boolean; // Use template mode for multi-entity customization
+  entityData?: any; // Optional entity data to inform prompts with context
 }
 
 // Yext API Types
@@ -189,5 +193,88 @@ export interface YextAPIResponse<T = any> {
     }>;
   };
   response: T;
+}
+
+// Yext MCP Tool Input Types
+export interface YextListEntitiesInput {
+  entityType?: string; // Optional filter by entity type
+  limit?: number; // Default 50
+  yextApiKey: string;
+  yextAccountId: string;
+}
+
+export interface YextGetEntityInput {
+  entityId: string;
+  yextApiKey: string;
+  yextAccountId: string;
+}
+
+export interface YextUpdateEntityInput {
+  entityId: string;
+  contentType: 'FAQ' | 'COMPARISON' | 'BLOG';
+  content: FAQComponentProps | ComparisonComponentProps | BlogComponentProps;
+  fieldId?: string; // Optional, will use default if not provided
+  yextApiKey: string;
+  yextAccountId: string;
+}
+
+export interface YextCheckFieldInput {
+  entityId: string;
+  fieldId: string;
+  yextApiKey: string;
+  yextAccountId: string;
+}
+
+export interface YextGetFieldSchemaInput {
+  entityType: string; // e.g., "location", "organization"
+  fieldId?: string; // Optional: specific field, or all fields if omitted
+  yextApiKey: string;
+  yextAccountId: string;
+}
+
+// Yext MCP Tool Output Types
+export interface YextListEntitiesOutput {
+  entities: Array<{
+    id: string;
+    name: string;
+    entityType: string;
+    address?: {
+      city?: string;
+      region?: string;
+      line1?: string;
+    };
+    // Minimal fields for selection
+  }>;
+  total: number;
+}
+
+export interface YextGetEntityOutput {
+  entity: any; // Full entity object
+  availableFields: string[]; // List of field IDs that exist
+}
+
+export interface YextUpdateEntityOutput {
+  success: boolean;
+  entityId: string;
+  fieldId: string;
+  uuid: string;
+  message: string;
+}
+
+export interface YextCheckFieldOutput {
+  exists: boolean;
+  fieldId: string;
+  entityId: string;
+}
+
+export interface YextGetFieldSchemaOutput {
+  entityType: string;
+  fields: Array<{
+    fieldId: string;
+    type: string; // e.g., "string", "list", "richText"
+    displayName?: string;
+    description?: string;
+    required?: boolean;
+  }>;
 }
 

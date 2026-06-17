@@ -349,7 +349,7 @@ export function mapBlogToYextEntity(
 /**
  * Check if a field exists on an entity
  */
-async function checkFieldExists(
+export async function checkFieldExists(
   entityId: string,
   fieldId: string,
   apiKey: string,

@@ -20,8 +20,26 @@ import {
   BlogComponentProps,
   GenerateComparisonInput,
   GenerateBlogInput,
+  YextListEntitiesInput,
+  YextListEntitiesOutput,
+  YextGetEntityInput,
+  YextGetEntityOutput,
+  YextUpdateEntityInput,
+  YextUpdateEntityOutput,
+  YextCheckFieldInput,
+  YextCheckFieldOutput,
+  YextGetFieldSchemaInput,
+  YextGetFieldSchemaOutput,
 } from './types';
-import { getFAQEntity } from './yext-client';
+import { 
+  getFAQEntity, 
+  listEntities, 
+  updateFAQEntity, 
+  updateComparisonEntity, 
+  updateBlogEntity,
+  checkFieldExists
+} from './yext-client';
+import { getMockPAAData } from './mock-data';
 
 // In-memory draft storage
 // Use globalThis to persist across hot reloads in dev mode
@@ -132,9 +150,16 @@ export async function expandSeeds(input: ExpandSeedsInput): Promise<{ seeds: str
  * Tool 2: Fetch People Also Ask questions
  */
 export async function fetchPAA(input: FetchPAAInput): Promise<{ rows: PAARow[] }> {
-  const { seeds, location, hl } = input;
+  const { seeds, location, hl, testMode } = input;
   
-  console.log(`[fetchPAA] Fetching PAA for ${seeds.length} seeds`);
+  console.log(`[fetchPAA] Fetching PAA for ${seeds.length} seeds${testMode ? ' (TEST MODE - using mock data)' : ''}`);
+  
+  // Use mock data if testMode is enabled
+  if (testMode) {
+    const mockRows = getMockPAAData(seeds);
+    console.log(`[fetchPAA] Returning ${mockRows.length} mock PAA rows`);
+    return { rows: mockRows };
+  }
   
   const allRows: PAARow[] = [];
   
@@ -353,10 +378,10 @@ export async function recommendContentType(input: RecommendContentTypeInput): Pr
  * Tool 5: Generate FAQ JSON using OpenAI
  */
 export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqComponent: FAQComponentProps }> {
-  const { brand, region, questions, customInstructions, genericContent, useTemplate } = input;
+  const { brand, region, questions, customInstructions, genericContent, useTemplate, entityData } = input;
   
   const mode = useTemplate ? 'template' : genericContent ? 'generic' : 'specific';
-  console.log(`[generateFAQJSON] Generating FAQ (${mode} mode) for ${questions.length} questions${brand ? ` for ${brand}` : 'generic'}`);
+  console.log(`[generateFAQJSON] Generating FAQ (${mode} mode) for ${questions.length} questions${brand ? ` for ${brand}` : 'generic'}${entityData ? ' with entity context' : ''}`);
   
   const questionList = questions.length > 0 
     ? questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n')
@@ -365,6 +390,34 @@ export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqCom
   const brandContext = brand ? `for ${brand} ` : '';
   const brandSpecificity = brand ? `specific to ${brand} ` : '';
   
+  // Get available placeholders from entity data
+  const availablePlaceholders = getAvailablePlaceholders(entityData);
+  const placeholderList = availablePlaceholders.map(p => `{{${p}}}`).join(', ');
+  
+  // Build entity context string if entityData is provided
+  let entityContext = '';
+  if (entityData) {
+    const placeholders = getEntityPlaceholders(entityData);
+    const contextParts: string[] = [];
+    
+    if (placeholders.hours) {
+      contextParts.push(`Hours: ${placeholders.hours}`);
+    }
+    if (placeholders.amenities) {
+      contextParts.push(`Amenities: ${placeholders.amenities}`);
+    }
+    if (placeholders.services) {
+      contextParts.push(`Services: ${placeholders.services}`);
+    }
+    if (placeholders.description) {
+      contextParts.push(`Description: ${placeholders.description.substring(0, 200)}`);
+    }
+    
+    if (contextParts.length > 0) {
+      entityContext = `\n\nEntity Context:\n${contextParts.join('\n')}\n\nUse this information to make the FAQs more relevant and specific.`;
+    }
+  }
+  
   let prompt = '';
   
   if (useTemplate || genericContent) {
@@ -372,32 +425,33 @@ export async function generateFAQJSON(input: GenerateFAQInput): Promise<{ faqCom
     prompt = `You are a content writer ${brandContext}creating FAQ content that will be customized for multiple locations.
 
 Generate a concise, factual FAQ template based on these questions:
-${questionList}
+${questionList}${entityContext}
 
 Requirements:
 - Answer 5-8 of the best questions (prioritize commercial intent and general relevance)
 - Each answer should be 2-3 sentences maximum
-- Use placeholders for location-specific information: {{entityName}}, {{city}}, {{region}}, {{state}}, {{address}}
+- Use placeholders for location-specific information: ${placeholderList}
 - Be factual, helpful, and ${brandSpecificity}applicable to any location
 - Tone should be friendly and professional
 - Answers should work across different cities and regions
+${entityData ? `- Available placeholders: ${placeholderList} (use these when relevant)` : ''}
 
 Example placeholders:
 - "Visit {{entityName}} at {{address}} in {{city}}"
 - "We're located in {{city}}, {{state}}"
-- "Contact {{entityName}} in {{city}} for more information"`;
+- "Contact {{entityName}} in {{city}} for more information"${entityData && availablePlaceholders.includes('hours') ? '\n- "Our hours are {{hours}}"' : ''}${entityData && availablePlaceholders.includes('amenities') ? '\n- "We offer {{amenities}}"' : ''}`;
   } else {
     // Specific mode - region-specific content
     prompt = `You are a content writer ${brandContext}in ${region}. 
 
 Generate a concise, factual FAQ based on these questions:
-${questionList}
+${questionList}${entityContext}
 
 Requirements:
 - Answer 5-8 of the best questions (prioritize commercial notices and local relevance)
 - Each answer should be 2-3 sentences maximum
 - Be factual, helpful, and ${brandSpecificity}relevant to ${region}
-- Tone should be friendly and professional`;
+- Tone should be friendly and professional${entityData ? `\n- Use entity context information when relevant to make answers more specific` : ''}`;
   }
 
   if (customInstructions) {
@@ -469,13 +523,41 @@ Requirements:
  * Tool 6: Generate Comparison JSON
  */
 export async function generateComparisonJSON(input: GenerateComparisonInput): Promise<{ comparisonComponent: ComparisonComponentProps }> {
-  const { brand, vertical, region, questions, customInstructions, genericContent, useTemplate } = input;
+  const { brand, vertical, region, questions, customInstructions, genericContent, useTemplate, entityData } = input;
   
   const mode = useTemplate ? 'template' : genericContent ? 'generic' : 'specific';
-  console.log(`[generateComparisonJSON] Generating comparison (${mode} mode) for ${questions.length} questions`);
+  console.log(`[generateComparisonJSON] Generating comparison (${mode} mode) for ${questions.length} questions${entityData ? ' with entity context' : ''}`);
   
   const questionList = questions.slice(0, 5).map((q, i) => `${i + 1}. ${q.question}`).join('\n');
   const brandContext = brand ? `for ${brand} ` : '';
+  
+  // Get available placeholders from entity data
+  const availablePlaceholders = getAvailablePlaceholders(entityData);
+  const placeholderList = availablePlaceholders.map(p => `{{${p}}}`).join(', ');
+  
+  // Build entity context string if entityData is provided
+  let entityContext = '';
+  if (entityData) {
+    const placeholders = getEntityPlaceholders(entityData);
+    const contextParts: string[] = [];
+    
+    if (placeholders.hours) {
+      contextParts.push(`Hours: ${placeholders.hours}`);
+    }
+    if (placeholders.amenities) {
+      contextParts.push(`Amenities: ${placeholders.amenities}`);
+    }
+    if (placeholders.services) {
+      contextParts.push(`Services: ${placeholders.services}`);
+    }
+    if (placeholders.description) {
+      contextParts.push(`Description: ${placeholders.description.substring(0, 200)}`);
+    }
+    
+    if (contextParts.length > 0) {
+      entityContext = `\n\nEntity Context:\n${contextParts.join('\n')}\n\nUse this information to make the comparison more relevant and specific.`;
+    }
+  }
   
   let prompt = '';
   
@@ -484,27 +566,28 @@ export async function generateComparisonJSON(input: GenerateComparisonInput): Pr
     prompt = `You are a content writer ${brandContext}creating a product/service comparison that will be customized for multiple locations.
 
 Analyze these questions and generate a comparison template:
-${questionList}
+${questionList}${entityContext}
 
 Requirements:
 - Create a comparison table format
 - Identify the main competitor or alternative
 - Compare 5-7 key factors (price, features, quality, convenience, etc.)
 - Each comparison should have: Feature name, Your brand's value, Competitor's value
-- Use placeholders for location-specific information: {{entityName}}, {{city}}, {{region}}, {{state}}, {{address}}
+- Use placeholders for location-specific information: ${placeholderList}
 - Be factual and ${brandContext}applicable to any location
 - Values should work across different cities and regions
+${entityData ? `- Available placeholders: ${placeholderList} (use these when relevant)` : ''}
 
 Example placeholders:
 - "Visit {{entityName}} at {{address}} in {{city}}"
 - "We're located in {{city}}, {{state}}"
-- "Contact {{entityName}} in {{city}} for more information"`;
+- "Contact {{entityName}} in {{city}} for more information"${entityData && availablePlaceholders.includes('hours') ? '\n- "Our hours are {{hours}}"' : ''}${entityData && availablePlaceholders.includes('amenities') ? '\n- "We offer {{amenities}}"' : ''}`;
   } else {
     // Specific mode - region-specific content
     prompt = `You are a content writer ${brandContext}in ${region}. 
 
 Analyze these questions and generate a product/service comparison:
-${questionList}
+${questionList}${entityContext}
 
 Requirements:
 - Create a comparison table format
@@ -512,7 +595,7 @@ Requirements:
 - Compare 5-7 key factors (price, features, quality, convenience, etc.)
 - Each comparison should have: Feature name, Your brand's value, Competitor's value
 - Be factual and specific
-- Relevant to ${region}`;
+- Relevant to ${region}${entityData ? `\n- Use entity context information when relevant to make comparisons more specific` : ''}`;
   }
 
   if (customInstructions) {
@@ -581,12 +664,40 @@ Requirements:
  * Tool 7: Generate Blog JSON
  */
 export async function generateBlogJSON(input: GenerateBlogInput): Promise<{ blogComponent: BlogComponentProps }> {
-  const { brand, vertical, region, questions, customInstructions, genericContent, useTemplate } = input;
+  const { brand, vertical, region, questions, customInstructions, genericContent, useTemplate, entityData } = input;
   
   const mode = useTemplate ? 'template' : genericContent ? 'generic' : 'specific';
-  console.log(`[generateBlogJSON] Generating blog (${mode} mode) for ${questions.length} questions`);
+  console.log(`[generateBlogJSON] Generating blog (${mode} mode) for ${questions.length} questions${entityData ? ' with entity context' : ''}`);
   
   const brandContext = brand ? `for ${brand} ` : '';
+  
+  // Get available placeholders from entity data
+  const availablePlaceholders = getAvailablePlaceholders(entityData);
+  const placeholderList = availablePlaceholders.map(p => `{{${p}}}`).join(', ');
+  
+  // Build entity context string if entityData is provided
+  let entityContext = '';
+  if (entityData) {
+    const placeholders = getEntityPlaceholders(entityData);
+    const contextParts: string[] = [];
+    
+    if (placeholders.hours) {
+      contextParts.push(`Hours: ${placeholders.hours}`);
+    }
+    if (placeholders.amenities) {
+      contextParts.push(`Amenities: ${placeholders.amenities}`);
+    }
+    if (placeholders.services) {
+      contextParts.push(`Services: ${placeholders.services}`);
+    }
+    if (placeholders.description) {
+      contextParts.push(`Description: ${placeholders.description.substring(0, 200)}`);
+    }
+    
+    if (contextParts.length > 0) {
+      entityContext = `\n\nEntity Context:\n${contextParts.join('\n')}\n\nUse this information to make the blog more relevant and specific.`;
+    }
+  }
   
   // Generate article title from questions
   const titlePrompt = `Generate a compelling blog post title based on these questions ${brandContext}in ${vertical}${region ? ` (${region})` : ''}:
@@ -614,21 +725,22 @@ ${questions.slice(0, 5).map(q => q.question).join('\n')}`;
 Title: ${title}
 
 Questions to address:
-${questions.slice(0, 8).map((q, i) => `${i + 1}. ${q.question}`).join('\n')}
+${questions.slice(0, 8).map((q, i) => `${i + 1}. ${q.question}`).join('\n')}${entityContext}
 
 Requirements:
 - Create 4-6 sections with headings and content
 - Each section should have a heading (H2) and 2-3 paragraphs
-- Use placeholders for location-specific information: {{entityName}}, {{city}}, {{region}}, {{state}}, {{address}}
+- Use placeholders for location-specific information: ${placeholderList}
 - Write in a friendly, informative tone
 - Include meta description (150 characters)
 - Content should be ${brandContext}applicable to any location
 - Sections should work across different cities and regions
+${entityData ? `- Available placeholders: ${placeholderList} (use these when relevant)` : ''}
 
 Example placeholders:
 - "Visit {{entityName}} at {{address}} in {{city}}"
 - "We're located in {{city}}, {{state}}"
-- "Contact {{entityName}} in {{city}} for more information"`;
+- "Contact {{entityName}} in {{city}} for more information"${entityData && availablePlaceholders.includes('hours') ? '\n- "Our hours are {{hours}}"' : ''}${entityData && availablePlaceholders.includes('amenities') ? '\n- "We offer {{amenities}}"' : ''}`;
     } else {
       // Specific mode - region-specific content
       blogPrompt = `You are a content writer ${brandContext}in ${region}. 
@@ -636,14 +748,14 @@ Example placeholders:
 Title: ${title}
 
 Questions to address:
-${questions.slice(0, 8).map((q, i) => `${i + 1}. ${q.question}`).join('\n')}
+${questions.slice(0, 8).map((q, i) => `${i + 1}. ${q.question}`).join('\n')}${entityContext}
 
 Requirements:
 - Create 4-6 sections with headings and content
 - Each section should have a heading (H2) and 2-3 paragraphs
 - Write in a friendly, informative tone
 - Include meta description (150 characters)
-- Relevant to ${region}`;
+- Relevant to ${region}${entityData ? `\n- Use entity context information when relevant to make content more specific` : ''}`;
     }
 
     if (customInstructions) {
@@ -715,7 +827,41 @@ Requirements:
 }
 
 /**
+ * Helper function to get list of available placeholders from entity data
+ * Used to inform prompts about which placeholders can be used
+ */
+function getAvailablePlaceholders(entityData?: any): string[] {
+  if (!entityData) {
+    return ['entityName', 'city', 'region', 'state', 'address', 'phone'];
+  }
+  
+  const placeholders: string[] = ['entityName', 'city', 'region', 'state', 'address', 'phone'];
+  
+  if (entityData.hours || entityData.c_hours) {
+    placeholders.push('hours');
+  }
+  if (entityData.amenities || entityData.c_amenities) {
+    placeholders.push('amenities');
+  }
+  if (entityData.services || entityData.c_services) {
+    placeholders.push('services');
+  }
+  if (entityData.description || entityData.c_description) {
+    placeholders.push('description');
+  }
+  if (entityData.website || entityData.c_website) {
+    placeholders.push('website');
+  }
+  if (entityData.emails || entityData.c_email) {
+    placeholders.push('email');
+  }
+  
+  return placeholders;
+}
+
+/**
  * Helper function to extract entity information for placeholder replacement
+ * Enhanced to extract more fields: hours, amenities, services, description, etc.
  */
 function getEntityPlaceholders(entity: any) {
   const entityName = entity.name || 'our location';
@@ -727,7 +873,86 @@ function getEntityPlaceholders(entity: any) {
     : city;
   const phone = entity.localPhone || entity.mainPhone || '';
   
-  return { entityName, city, region, state, address, phone };
+  // Extract hours (can be object or string)
+  let hours = '';
+  if (entity.hours) {
+    if (typeof entity.hours === 'string') {
+      hours = entity.hours;
+    } else if (typeof entity.hours === 'object') {
+      // Format hours object (e.g., { monday: { open: "9:00", close: "17:00" } })
+      const hoursParts: string[] = [];
+      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      for (const day of days) {
+        if (entity.hours[day]) {
+          const dayHours = entity.hours[day];
+          if (dayHours.open && dayHours.close) {
+            hoursParts.push(`${day}: ${dayHours.open} - ${dayHours.close}`);
+          } else if (dayHours.isClosed) {
+            hoursParts.push(`${day}: Closed`);
+          }
+        }
+      }
+      hours = hoursParts.join(', ') || 'Hours vary';
+    }
+  }
+  
+  // Extract amenities (can be array or string)
+  let amenities = '';
+  if (entity.amenities) {
+    if (Array.isArray(entity.amenities)) {
+      amenities = entity.amenities.join(', ');
+    } else if (typeof entity.amenities === 'string') {
+      amenities = entity.amenities;
+    }
+  } else if (entity.c_amenities) {
+    // Check for custom field
+    if (Array.isArray(entity.c_amenities)) {
+      amenities = entity.c_amenities.join(', ');
+    } else if (typeof entity.c_amenities === 'string') {
+      amenities = entity.c_amenities;
+    }
+  }
+  
+  // Extract services (can be array or string)
+  let services = '';
+  if (entity.services) {
+    if (Array.isArray(entity.services)) {
+      services = entity.services.join(', ');
+    } else if (typeof entity.services === 'string') {
+      services = entity.services;
+    }
+  } else if (entity.c_services) {
+    // Check for custom field
+    if (Array.isArray(entity.c_services)) {
+      services = entity.c_services.join(', ');
+    } else if (typeof entity.c_services === 'string') {
+      services = entity.c_services;
+    }
+  }
+  
+  // Extract description
+  const description = entity.description || entity.c_description || '';
+  
+  // Extract website/URL
+  const website = entity.website || entity.c_website || '';
+  
+  // Extract email
+  const email = entity.emails?.[0] || entity.c_email || '';
+  
+  return { 
+    entityName, 
+    city, 
+    region, 
+    state, 
+    address, 
+    phone,
+    hours,
+    amenities,
+    services,
+    description,
+    website,
+    email,
+  };
 }
 
 /**
@@ -740,7 +965,13 @@ function replacePlaceholders(text: string, placeholders: ReturnType<typeof getEn
     .replace(/\{\{region\}\}/g, placeholders.region)
     .replace(/\{\{state\}\}/g, placeholders.state)
     .replace(/\{\{address\}\}/g, placeholders.address)
-    .replace(/\{\{phone\}\}/g, placeholders.phone);
+    .replace(/\{\{phone\}\}/g, placeholders.phone)
+    .replace(/\{\{hours\}\}/g, placeholders.hours)
+    .replace(/\{\{amenities\}\}/g, placeholders.amenities)
+    .replace(/\{\{services\}\}/g, placeholders.services)
+    .replace(/\{\{description\}\}/g, placeholders.description)
+    .replace(/\{\{website\}\}/g, placeholders.website)
+    .replace(/\{\{email\}\}/g, placeholders.email);
 }
 
 /**
@@ -881,5 +1112,226 @@ export async function draftStoreGet(input: DraftStoreGetInput): Promise<{ draft:
   console.log(`[draftStoreGet] Retrieved draft ${draftId}`);
   
   return { draft };
+}
+
+/**
+ * Yext MCP Tool 1: List entities from Yext
+ */
+export async function yextListEntities(input: YextListEntitiesInput): Promise<YextListEntitiesOutput> {
+  const { entityType, limit = 50, yextApiKey, yextAccountId } = input;
+  
+  console.log(`[yextListEntities] Listing entities${entityType ? ` of type ${entityType}` : ''}...`);
+  
+  try {
+    const entities = await listEntities(entityType, limit, yextApiKey, yextAccountId);
+    
+    // Transform to minimal format for selection
+    const minimalEntities = entities.map((entity: any) => ({
+      id: entity.id || entity.meta?.id,
+      name: entity.name || 'Unnamed Entity',
+      entityType: entity.meta?.entityType || entity.entityType || 'unknown',
+      address: entity.address ? {
+        city: entity.address.city,
+        region: entity.address.region,
+        line1: entity.address.line1,
+      } : undefined,
+    }));
+    
+    return {
+      entities: minimalEntities,
+      total: minimalEntities.length,
+    };
+  } catch (error) {
+    console.error('[yextListEntities] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Yext MCP Tool 2: Get entity with available fields
+ */
+export async function yextGetEntity(input: YextGetEntityInput): Promise<YextGetEntityOutput> {
+  const { entityId, yextApiKey, yextAccountId } = input;
+  
+  console.log(`[yextGetEntity] Fetching entity ${entityId}...`);
+  
+  try {
+    const entity = await getFAQEntity(entityId, yextApiKey, yextAccountId);
+    
+    if (!entity) {
+      throw new Error(`Entity ${entityId} not found`);
+    }
+    
+    // Extract available field IDs from entity
+    const availableFields: string[] = [];
+    for (const key in entity) {
+      if (key !== 'meta' && typeof entity[key] !== 'function') {
+        availableFields.push(key);
+      }
+    }
+    
+    return {
+      entity,
+      availableFields,
+    };
+  } catch (error) {
+    console.error('[yextGetEntity] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Yext MCP Tool 3: Update entity (unified for all content types)
+ */
+export async function yextUpdateEntity(input: YextUpdateEntityInput): Promise<YextUpdateEntityOutput> {
+  const { entityId, contentType, content, fieldId, yextApiKey, yextAccountId } = input;
+  
+  console.log(`[yextUpdateEntity] Updating ${contentType} entity ${entityId}...`);
+  
+  try {
+    let result;
+    let defaultFieldId: string;
+    
+    if (contentType === 'FAQ') {
+      defaultFieldId = 'c_minigolfMadness_locations_faqSection';
+      const targetFieldId = fieldId || defaultFieldId;
+      result = await updateFAQEntity(
+        entityId,
+        content as FAQComponentProps,
+        targetFieldId,
+        yextApiKey,
+        yextAccountId
+      );
+    } else if (contentType === 'COMPARISON') {
+      defaultFieldId = 'c_minigolfMadnessProductComparison';
+      const targetFieldId = fieldId || defaultFieldId;
+      result = await updateComparisonEntity(
+        entityId,
+        content as ComparisonComponentProps,
+        targetFieldId,
+        yextApiKey,
+        yextAccountId
+      );
+    } else if (contentType === 'BLOG') {
+      defaultFieldId = 'c_minigolfMandnessBlogs';
+      const targetFieldId = fieldId || defaultFieldId;
+      result = await updateBlogEntity(
+        entityId,
+        content as BlogComponentProps,
+        targetFieldId,
+        yextApiKey,
+        yextAccountId
+      );
+    } else {
+      throw new Error(`Unsupported content type: ${contentType}`);
+    }
+    
+    const targetFieldId = fieldId || defaultFieldId!;
+    
+    return {
+      success: true,
+      entityId,
+      fieldId: targetFieldId,
+      uuid: result.meta.uuid,
+      message: `Successfully updated ${contentType} entity ${entityId}`,
+    };
+  } catch (error) {
+    console.error('[yextUpdateEntity] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Yext MCP Tool 4: Check if field exists on entity
+ */
+export async function yextCheckField(input: YextCheckFieldInput): Promise<YextCheckFieldOutput> {
+  const { entityId, fieldId, yextApiKey, yextAccountId } = input;
+  
+  console.log(`[yextCheckField] Checking if field ${fieldId} exists on entity ${entityId}...`);
+  
+  try {
+    const exists = await checkFieldExists(entityId, fieldId, yextApiKey, yextAccountId);
+    
+    return {
+      exists,
+      fieldId,
+      entityId,
+    };
+  } catch (error) {
+    console.error('[yextCheckField] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Yext MCP Tool 5: Get field schema for entity type
+ * Note: Yext API may not have a direct schema endpoint, so we infer from entity structure
+ */
+export async function yextGetFieldSchema(input: YextGetFieldSchemaInput): Promise<YextGetFieldSchemaOutput> {
+  const { entityType, fieldId, yextApiKey, yextAccountId } = input;
+  
+  console.log(`[yextGetFieldSchema] Getting field schema for entity type ${entityType}${fieldId ? `, field ${fieldId}` : ''}...`);
+  
+  try {
+    // Fetch a sample entity of this type to infer schema
+    const entities = await listEntities(entityType, 1, yextApiKey, yextAccountId);
+    
+    if (entities.length === 0) {
+      throw new Error(`No entities found for type ${entityType}`);
+    }
+    
+    const sampleEntity = entities[0];
+    const fields: Array<{
+      fieldId: string;
+      type: string;
+      displayName?: string;
+      description?: string;
+      required?: boolean;
+    }> = [];
+    
+    // Infer field types from sample entity
+    for (const key in sampleEntity) {
+      if (key === 'meta' || typeof sampleEntity[key] === 'function') {
+        continue;
+      }
+      
+      // If fieldId is specified, only return that field
+      if (fieldId && key !== fieldId) {
+        continue;
+      }
+      
+      const value = sampleEntity[key];
+      let type = 'string';
+      
+      if (Array.isArray(value)) {
+        type = 'list';
+      } else if (typeof value === 'object' && value !== null) {
+        // Check if it's Lexical JSON (has root property)
+        if (value.root) {
+          type = 'richText';
+        } else {
+          type = 'object';
+        }
+      } else if (typeof value === 'number') {
+        type = 'number';
+      } else if (typeof value === 'boolean') {
+        type = 'boolean';
+      }
+      
+      fields.push({
+        fieldId: key,
+        type,
+        displayName: key.replace(/_/g, ' ').replace(/c_/g, '').replace(/\b\w/g, (l) => l.toUpperCase()),
+      });
+    }
+    
+    return {
+      entityType,
+      fields,
+    };
+  } catch (error) {
+    console.error('[yextGetFieldSchema] Error:', error);
+    throw error;
+  }
 }
 
