@@ -1,4 +1,5 @@
 import { FAQComponentProps, ComparisonComponentProps, BlogComponentProps, YextFAQEntity, YextAPIResponse } from './types';
+import { resolveYextCredentials } from './yext-credentials';
 
 const YEXT_API_BASE = 'https://api.yextapis.com/v2';
 
@@ -6,21 +7,9 @@ const YEXT_API_BASE = 'https://api.yextapis.com/v2';
  * Yext API client for managing FAQ entities in Knowledge Graph
  */
 
-/**
- * Get Yext API credentials from parameters or environment variables (fallback)
- */
 function getYextCredentials(apiKey?: string, accountId?: string) {
-  const finalApiKey = apiKey || process.env.YEXT_API_KEY;
-  const finalAccountId = accountId || process.env.YEXT_ACCOUNT_ID;
-
-  if (!finalApiKey) {
-    throw new Error('Yext API Key is required. Please provide it in the request or set YEXT_API_KEY environment variable.');
-  }
-  if (!finalAccountId) {
-    throw new Error('Yext Account ID is required. Please provide it in the request or set YEXT_ACCOUNT_ID environment variable.');
-  }
-
-  return { apiKey: finalApiKey, accountId: finalAccountId };
+  const { yextApiKey, yextAccountId } = resolveYextCredentials(apiKey, accountId);
+  return { apiKey: yextApiKey, accountId: yextAccountId };
 }
 
 /**

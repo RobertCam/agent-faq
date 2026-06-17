@@ -43,6 +43,7 @@ export default function Home() {
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [lastDraftId, setLastDraftId] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
+  const [yextServerConfigured, setYextServerConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     const cached = loadSession();
@@ -57,8 +58,8 @@ export default function Home() {
       if (cached.steps) setSteps(cached.steps);
       if (cached.workflowData) setWorkflowData(cached.workflowData);
       if (cached.lastDraftId) setLastDraftId(cached.lastDraftId);
-      setRestored(true);
     }
+    setRestored(true);
   }, []);
 
   useEffect(() => {
@@ -94,21 +95,35 @@ export default function Home() {
   }, [contentType]);
 
   useEffect(() => {
-    async function loadEntities() {
-      setLoadingEntities(true);
-      try {
-        const res = await fetch('/api/yext/entities');
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Failed to load entities');
-        setEntities(data.entities || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load Yext entities');
-      } finally {
-        setLoadingEntities(false);
-      }
-    }
-    loadEntities();
+    fetch('/api/yext/status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setYextServerConfigured(data.configured);
+      })
+      .catch(() => setYextServerConfigured(null));
   }, []);
+
+  const loadEntities = async () => {
+    setLoadingEntities(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/yext/entities');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load entities');
+      setEntities(data.entities || []);
+    } catch (err) {
+      setEntities([]);
+      setError(err instanceof Error ? err.message : 'Failed to load Yext entities');
+    } finally {
+      setLoadingEntities(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!restored) return;
+    loadEntities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored]);
 
   const handleRun = async () => {
     if (!category.trim()) {
@@ -330,27 +345,50 @@ export default function Home() {
                 <h3 className="text-lg font-semibold text-gray-900">
                   Yext Entities ({selectedEntities.size} selected)
                 </h3>
-                {entities.length > 0 && (
+                <div className="flex items-center gap-3">
+                  {entities.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedEntities.size === entities.length) {
+                          setSelectedEntities(new Set());
+                        } else {
+                          setSelectedEntities(new Set(entities.map((e) => e.id)));
+                        }
+                      }}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      {selectedEntities.size === entities.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (selectedEntities.size === entities.length) {
-                        setSelectedEntities(new Set());
-                      } else {
-                        setSelectedEntities(new Set(entities.map((e) => e.id)));
-                      }
-                    }}
-                    className="text-sm text-blue-600 hover:text-blue-800"
+                    onClick={loadEntities}
+                    disabled={loading || loadingEntities}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                   >
-                    {selectedEntities.size === entities.length ? 'Deselect all' : 'Select all'}
+                    {loadingEntities ? 'Refreshing...' : 'Refresh'}
                   </button>
-                )}
+                </div>
               </div>
 
+              {yextServerConfigured === true && (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-3">
+                  Yext credentials configured via server environment variables.
+                </p>
+              )}
+              {yextServerConfigured === false && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                  No Yext credentials detected. Set <code className="text-xs bg-white px-1 rounded">YEXT_API_KEY</code> and{' '}
+                  <code className="text-xs bg-white px-1 rounded">YEXT_ACCOUNT_ID</code> in your environment, then redeploy.
+                </p>
+              )}
               {loadingEntities ? (
                 <p className="text-sm text-gray-500">Loading entities from Yext...</p>
               ) : entities.length === 0 ? (
-                <p className="text-sm text-red-600">No entities found. Check YEXT_API_KEY and YEXT_ACCOUNT_ID.</p>
+                <p className="text-sm text-red-600">
+                  No entities found. Set YEXT_API_KEY and YEXT_ACCOUNT_ID in your environment.
+                </p>
               ) : (
                 <div className="max-h-64 overflow-y-auto border rounded-lg divide-y">
                   {entities.map((entity) => {

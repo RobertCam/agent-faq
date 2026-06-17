@@ -14,6 +14,8 @@ export interface SessionCache {
   category: string;
   contentType: string;
   fieldId: string;
+  yextApiKey?: string;
+  yextAccountId?: string;
   customInstructions: string;
   testMode: boolean;
   selectedEntityIds: string[];

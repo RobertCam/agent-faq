@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listEntities } from '@/lib/yext-client';
+import { resolveYextCredentials } from '@/lib/yext-credentials';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { entityType, limit, yextApiKey, yextAccountId } = body;
 
-    if (!yextApiKey || !yextAccountId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Yext API Key and Account ID are required',
-        },
-        { status: 400 }
-      );
-    }
+    const credentials = resolveYextCredentials(yextApiKey, yextAccountId);
 
     console.log(`[list-yext-entities] Listing entities${entityType ? ` of type ${entityType}` : ''}`);
 
-    const entities = await listEntities(entityType, limit || 50, yextApiKey, yextAccountId);
+    const entities = await listEntities(
+      entityType,
+      limit || 50,
+      credentials.yextApiKey,
+      credentials.yextAccountId
+    );
 
     // Filter for FAQ entities and show their structure
     const faqEntities = entities.filter((e: any) => 

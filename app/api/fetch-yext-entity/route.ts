@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFAQEntity } from '@/lib/yext-client';
+import { resolveYextCredentials } from '@/lib/yext-credentials';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { entityId } = body;
+    const { entityId, yextApiKey, yextAccountId } = body;
 
     if (!entityId) {
       return NextResponse.json(
@@ -13,9 +14,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const credentials = resolveYextCredentials(yextApiKey, yextAccountId);
+
     console.log(`[fetch-yext-entity] Fetching entity ${entityId}`);
 
-    const entity = await getFAQEntity(entityId);
+    const entity = await getFAQEntity(
+      entityId,
+      credentials.yextApiKey,
+      credentials.yextAccountId
+    );
 
     if (!entity) {
       return NextResponse.json(

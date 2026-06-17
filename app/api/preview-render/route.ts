@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { draftStoreGet } from '@/lib/mcp-tools';
 import { yextGetEntity } from '@/lib/mcp-tools';
 import { renderContentForEntity } from '@/lib/content-preview';
+import { resolveYextCredentialsFromSources } from '@/lib/yext-credentials';
 
 export async function POST(req: NextRequest) {
   try {
-    const { draftId, entityId, content: contentOverride } = await req.json();
+    const { draftId, entityId, content: contentOverride, yextApiKey, yextAccountId } = await req.json();
 
     if (!draftId || !entityId) {
       return NextResponse.json(
@@ -15,7 +16,16 @@ export async function POST(req: NextRequest) {
     }
 
     const { draft } = await draftStoreGet({ draftId });
-    const { entity } = await yextGetEntity({ entityId });
+    const credentials = resolveYextCredentialsFromSources(
+      { yextApiKey, yextAccountId },
+      draft.runContext
+    );
+
+    const { entity } = await yextGetEntity({
+      entityId,
+      yextApiKey: credentials.yextApiKey,
+      yextAccountId: credentials.yextAccountId,
+    });
 
     const sourceContent = contentOverride || draft.content;
     const rendered = renderContentForEntity(draft.contentType, sourceContent, entity);

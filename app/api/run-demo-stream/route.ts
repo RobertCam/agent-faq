@@ -12,6 +12,7 @@ import {
 } from '@/lib/mcp-tools';
 import { RunContext, RunContextEntity } from '@/lib/types';
 import { getDefaultFieldId } from '@/lib/constants';
+import { resolveYextCredentials } from '@/lib/yext-credentials';
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
@@ -62,6 +63,17 @@ export async function POST(req: NextRequest) {
           return;
         }
 
+        let yextCredentials: { yextApiKey: string; yextAccountId: string };
+        try {
+          yextCredentials = resolveYextCredentials();
+        } catch (error) {
+          sendUpdate('error', {
+            message: error instanceof Error ? error.message : 'Yext credentials are required',
+          });
+          controller.close();
+          return;
+        }
+
         const resolvedFieldId = fieldId || yextFieldId || getDefaultFieldId(contentType);
 
         if (!selectedEntityIds || !Array.isArray(selectedEntityIds) || selectedEntityIds.length === 0) {
@@ -79,7 +91,12 @@ export async function POST(req: NextRequest) {
         trackStep(0, 'Loading Yext entities', 'running');
         sendUpdate('step', { step: 0, name: 'Loading Yext entities', status: 'running' });
         try {
-          const entitiesResult = await yextListEntities({ entityType: 'location', limit: 50 });
+          const entitiesResult = await yextListEntities({
+            entityType: 'location',
+            limit: 50,
+            yextApiKey: yextCredentials.yextApiKey,
+            yextAccountId: yextCredentials.yextAccountId,
+          });
           const entityMap = new Map(entitiesResult.entities.map((e) => [e.id, e]));
 
           for (const id of finalSelectedEntityIds) {
@@ -113,7 +130,11 @@ export async function POST(req: NextRequest) {
         // Fetch sample entity for generation context
         let sampleEntityData: any;
         try {
-          const sample = await yextGetEntity({ entityId: finalSelectedEntityIds[0] });
+          const sample = await yextGetEntity({
+            entityId: finalSelectedEntityIds[0],
+            yextApiKey: yextCredentials.yextApiKey,
+            yextAccountId: yextCredentials.yextAccountId,
+          });
           sampleEntityData = sample.entity;
         } catch {
           // Continue without entity context

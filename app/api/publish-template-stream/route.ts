@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { draftStoreGet, yextGetEntity, yextUpdateEntity } from '@/lib/mcp-tools';
 import { renderContentForEntity } from '@/lib/content-preview';
 import { getDefaultFieldId } from '@/lib/constants';
+import { resolveYextCredentialsFromSources } from '@/lib/yext-credentials';
 import { ContentType } from '@/lib/types';
 
 function verifyFieldContent(
@@ -37,7 +38,7 @@ function verifyFieldContent(
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const body = await req.json();
-  const { draftId, content } = body;
+  const { draftId, content, yextApiKey, yextAccountId } = body;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -53,6 +54,10 @@ export async function POST(req: NextRequest) {
         }
 
         const { draft } = await draftStoreGet({ draftId });
+        const credentials = resolveYextCredentialsFromSources(
+          { yextApiKey, yextAccountId },
+          draft.runContext
+        );
         const templateContent = content || draft.content;
         const entityIds = draft.runContext?.selectedEntityIds || [];
         const fieldId = draft.fieldId || draft.runContext?.fieldId || getDefaultFieldId(draft.contentType);
@@ -94,7 +99,11 @@ export async function POST(req: NextRequest) {
           });
 
           try {
-            const { entity } = await yextGetEntity({ entityId });
+            const { entity } = await yextGetEntity({
+              entityId,
+              yextApiKey: credentials.yextApiKey,
+              yextAccountId: credentials.yextAccountId,
+            });
             const customized = renderContentForEntity(draft.contentType, templateContent, entity);
 
             const updateResult = await yextUpdateEntity({
@@ -102,6 +111,8 @@ export async function POST(req: NextRequest) {
               contentType: draft.contentType,
               content: customized,
               fieldId,
+              yextApiKey: credentials.yextApiKey,
+              yextAccountId: credentials.yextAccountId,
             });
 
             send('progress', {
@@ -113,7 +124,11 @@ export async function POST(req: NextRequest) {
               message: `Verifying ${entity.name || entityId}...`,
             });
 
-            const { entity: updatedEntity } = await yextGetEntity({ entityId });
+            const { entity: updatedEntity } = await yextGetEntity({
+              entityId,
+              yextApiKey: credentials.yextApiKey,
+              yextAccountId: credentials.yextAccountId,
+            });
             const verification = verifyFieldContent(updatedEntity, fieldId, draft.contentType);
 
             const result = {

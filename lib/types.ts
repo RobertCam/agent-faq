@@ -75,6 +75,8 @@ export interface RunContextEntity {
 export interface RunContext {
   category: string;
   fieldId: string;
+  yextApiKey?: string;
+  yextAccountId?: string;
   customInstructions?: string;
   testMode?: boolean;
   seeds: string[];
