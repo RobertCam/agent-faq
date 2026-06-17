@@ -35,7 +35,6 @@ import {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { accent } = body;
 
     // Handle different tool calls
     switch (body.tool) {
@@ -132,7 +131,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[MCP API] Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'DESKTOP' },
+      { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

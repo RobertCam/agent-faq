@@ -40,6 +40,7 @@ import {
   checkFieldExists
 } from './yext-client';
 import { getMockPAAData } from './mock-data';
+import { getDefaultFieldId } from './constants';
 
 // In-memory draft storage
 // Use globalThis to persist across hot reloads in dev mode
@@ -1068,19 +1069,23 @@ export function customizeBlogForEntity(
  * Tool 8: Draft store - Put
  */
 export async function draftStorePut(input: DraftStorePutInput): Promise<{ draftId: string }> {
-  const { brand, vertical, region, contentType, content, entityId } = input;
+  const { brand, vertical, category, region, contentType, content, entityId, fieldId, runContext } = input;
+  const resolvedCategory = category || vertical || 'Unknown';
   
   const draftId = `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
   const draft: Draft = {
     id: draftId,
     brand,
-    vertical,
+    vertical: resolvedCategory,
+    category: resolvedCategory,
     region,
     contentType,
     content,
     createdAt: new Date().toISOString(),
-    entityId, // Store entityId if provided
+    entityId,
+    fieldId,
+    runContext,
   };
   
   const drafts = getDraftsMap();
@@ -1188,13 +1193,16 @@ export async function yextUpdateEntity(input: YextUpdateEntityInput): Promise<Ye
   
   console.log(`[yextUpdateEntity] Updating ${contentType} entity ${entityId}...`);
   
+  if (contentType !== 'FAQ' && contentType !== 'COMPARISON' && contentType !== 'BLOG') {
+    throw new Error(`Unsupported content type: ${contentType}`);
+  }
+
+  const targetFieldId = fieldId || getDefaultFieldId(contentType);
+
   try {
     let result;
-    let defaultFieldId: string;
-    
+
     if (contentType === 'FAQ') {
-      defaultFieldId = 'c_minigolfMadness_locations_faqSection';
-      const targetFieldId = fieldId || defaultFieldId;
       result = await updateFAQEntity(
         entityId,
         content as FAQComponentProps,
@@ -1203,8 +1211,6 @@ export async function yextUpdateEntity(input: YextUpdateEntityInput): Promise<Ye
         yextAccountId
       );
     } else if (contentType === 'COMPARISON') {
-      defaultFieldId = 'c_minigolfMadnessProductComparison';
-      const targetFieldId = fieldId || defaultFieldId;
       result = await updateComparisonEntity(
         entityId,
         content as ComparisonComponentProps,
@@ -1212,9 +1218,7 @@ export async function yextUpdateEntity(input: YextUpdateEntityInput): Promise<Ye
         yextApiKey,
         yextAccountId
       );
-    } else if (contentType === 'BLOG') {
-      defaultFieldId = 'c_minigolfMandnessBlogs';
-      const targetFieldId = fieldId || defaultFieldId;
+    } else {
       result = await updateBlogEntity(
         entityId,
         content as BlogComponentProps,
@@ -1222,12 +1226,8 @@ export async function yextUpdateEntity(input: YextUpdateEntityInput): Promise<Ye
         yextApiKey,
         yextAccountId
       );
-    } else {
-      throw new Error(`Unsupported content type: ${contentType}`);
     }
-    
-    const targetFieldId = fieldId || defaultFieldId!;
-    
+
     return {
       success: true,
       entityId,

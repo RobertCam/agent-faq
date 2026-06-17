@@ -15,15 +15,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!yextApiKey || !yextAccountId) {
+    if (!yextApiKey && !process.env.YEXT_API_KEY) {
       return NextResponse.json(
         { 
           success: false,
-          error: 'Yext API Key and Account ID are required' 
+          error: 'Yext API Key is required. Set YEXT_API_KEY in environment.' 
         },
         { status: 400 }
       );
     }
+
+    if (!yextAccountId && !process.env.YEXT_ACCOUNT_ID) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Yext Account ID is required. Set YEXT_ACCOUNT_ID in environment.' 
+        },
+        { status: 400 }
+      );
+    }
+
+    const resolvedApiKey = yextApiKey || process.env.YEXT_API_KEY!;
+    const resolvedAccountId = yextAccountId || process.env.YEXT_ACCOUNT_ID!;
 
     const targetFieldId = fieldId || 'c_minigolfMadness_locations_faqSection';
     const results: Array<{
@@ -111,8 +124,8 @@ export async function POST(req: NextRequest) {
             targetEntityId, 
             faqContent, 
             targetFieldId,
-            yextApiKey,
-            yextAccountId
+            resolvedApiKey,
+            resolvedAccountId
           );
         } else if (draft.contentType === 'COMPARISON') {
           const comparisonContent = draft.content as ComparisonComponentProps;
@@ -144,8 +157,8 @@ export async function POST(req: NextRequest) {
             targetEntityId, 
             comparisonContent, 
             targetFieldId,
-            yextApiKey,
-            yextAccountId
+            resolvedApiKey,
+            resolvedAccountId
           );
         } else if (draft.contentType === 'BLOG') {
           const blogContent = draft.content as BlogComponentProps;
@@ -177,8 +190,8 @@ export async function POST(req: NextRequest) {
             targetEntityId, 
             blogContent, 
             targetFieldId,
-            yextApiKey,
-            yextAccountId
+            resolvedApiKey,
+            resolvedAccountId
           );
         }
 

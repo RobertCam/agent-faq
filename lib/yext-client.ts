@@ -352,12 +352,13 @@ export function mapBlogToYextEntity(
 export async function checkFieldExists(
   entityId: string,
   fieldId: string,
-  apiKey: string,
-  accountId: string
+  apiKey?: string,
+  accountId?: string
 ): Promise<boolean> {
   try {
+    const { apiKey: finalApiKey, accountId: finalAccountId } = getYextCredentials(apiKey, accountId);
     const version = getCurrentVersion();
-    const url = `${YEXT_API_BASE}/accounts/${accountId}/entities/${entityId}?v=${version}&api_key=${apiKey}`;
+    const url = `${YEXT_API_BASE}/accounts/${finalAccountId}/entities/${entityId}?v=${version}&api_key=${finalApiKey}`;
     
     const response = await fetch(url, {
       method: 'GET',

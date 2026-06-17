@@ -65,15 +65,40 @@ export type ContentComponent =
   | ({ type: 'COMPARISON'; props: ComparisonComponentProps })
   | ({ type: 'BLOG'; props: BlogComponentProps });
 
+export interface RunContextEntity {
+  id: string;
+  name: string;
+  city?: string;
+  region?: string;
+}
+
+export interface RunContext {
+  category: string;
+  fieldId: string;
+  customInstructions?: string;
+  testMode?: boolean;
+  seeds: string[];
+  paaRows: PAARow[];
+  rankedQuestions: RankedQuestion[];
+  steps: Array<{ step: number; name: string; status: string }>;
+  selectedEntityIds: string[];
+  selectedEntities?: RunContextEntity[];
+  isTemplate: boolean;
+}
+
 export interface Draft {
   id: string;
-  brand?: string; // Optional - drafts can exist without brand
+  brand?: string;
+  /** @deprecated use category */
   vertical: string;
+  category: string;
   region: string;
   contentType: ContentType;
-  content: any; // Can be FAQComponentProps, ComparisonComponentProps, or BlogComponentProps
+  content: any;
   createdAt: string;
-  entityId?: string; // Optional Yext entity ID for FAQ entities
+  entityId?: string;
+  fieldId?: string;
+  runContext?: RunContext;
 }
 
 export interface PAARow {
@@ -118,12 +143,15 @@ export interface GenerateFAQInput {
 }
 
 export interface DraftStorePutInput {
-  brand?: string; // Optional - drafts can exist without brand
-  vertical: string;
+  brand?: string;
+  vertical?: string;
+  category?: string;
   region: string;
   contentType: ContentType;
-  content: any; // FAQComponentProps | ComparisonComponentProps | BlogComponentProps
-  entityId?: string; // Optional Yext entity ID for FAQ entities
+  content: any;
+  entityId?: string;
+  fieldId?: string;
+  runContext?: RunContext;
 }
 
 export interface DraftStoreGetInput {
@@ -197,39 +225,39 @@ export interface YextAPIResponse<T = any> {
 
 // Yext MCP Tool Input Types
 export interface YextListEntitiesInput {
-  entityType?: string; // Optional filter by entity type
-  limit?: number; // Default 50
-  yextApiKey: string;
-  yextAccountId: string;
+  entityType?: string;
+  limit?: number;
+  yextApiKey?: string;
+  yextAccountId?: string;
 }
 
 export interface YextGetEntityInput {
   entityId: string;
-  yextApiKey: string;
-  yextAccountId: string;
+  yextApiKey?: string;
+  yextAccountId?: string;
 }
 
 export interface YextUpdateEntityInput {
   entityId: string;
   contentType: 'FAQ' | 'COMPARISON' | 'BLOG';
   content: FAQComponentProps | ComparisonComponentProps | BlogComponentProps;
-  fieldId?: string; // Optional, will use default if not provided
-  yextApiKey: string;
-  yextAccountId: string;
+  fieldId?: string;
+  yextApiKey?: string;
+  yextAccountId?: string;
 }
 
 export interface YextCheckFieldInput {
   entityId: string;
   fieldId: string;
-  yextApiKey: string;
-  yextAccountId: string;
+  yextApiKey?: string;
+  yextAccountId?: string;
 }
 
 export interface YextGetFieldSchemaInput {
-  entityType: string; // e.g., "location", "organization"
-  fieldId?: string; // Optional: specific field, or all fields if omitted
-  yextApiKey: string;
-  yextAccountId: string;
+  entityType: string;
+  fieldId?: string;
+  yextApiKey?: string;
+  yextAccountId?: string;
 }
 
 // Yext MCP Tool Output Types

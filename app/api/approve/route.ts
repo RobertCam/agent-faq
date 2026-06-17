@@ -43,12 +43,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate Yext credentials
-    if (!yextApiKey || !yextAccountId) {
+    // Validate Yext credentials (fall back to server env)
+    const resolvedApiKey = yextApiKey || process.env.YEXT_API_KEY;
+    const resolvedAccountId = yextAccountId || process.env.YEXT_ACCOUNT_ID;
+
+    if (!resolvedApiKey || !resolvedAccountId) {
       return NextResponse.json(
         { 
           success: false,
-          error: 'Yext API Key and Account ID are required' 
+          error: 'Yext API Key and Account ID are required. Set YEXT_API_KEY and YEXT_ACCOUNT_ID in environment.' 
         },
         { status: 400 }
       );
@@ -91,8 +94,8 @@ export async function POST(req: NextRequest) {
         targetEntityId, 
         faqContent, 
         targetFieldId,
-        yextApiKey,
-        yextAccountId
+        resolvedApiKey,
+        resolvedAccountId
       );
     } else if (draft.contentType === 'COMPARISON') {
       const comparisonContent = draft.content as ComparisonComponentProps;
@@ -127,8 +130,8 @@ export async function POST(req: NextRequest) {
         targetEntityId, 
         comparisonContent, 
         targetFieldId,
-        yextApiKey,
-        yextAccountId
+        resolvedApiKey,
+        resolvedAccountId
       );
     } else if (draft.contentType === 'BLOG') {
       const blogContent = draft.content as BlogComponentProps;
@@ -163,8 +166,8 @@ export async function POST(req: NextRequest) {
         targetEntityId, 
         blogContent, 
         targetFieldId,
-        yextApiKey,
-        yextAccountId
+        resolvedApiKey,
+        resolvedAccountId
       );
     } else {
       // This shouldn't happen due to validation above, but satisfies TypeScript
